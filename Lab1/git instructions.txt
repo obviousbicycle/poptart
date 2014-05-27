@@ -1,0 +1,19 @@
+setting up git
+
+Instructions are summarized from the [[http://git-scm.com/doc][documentation]] on the Git website.
+
+   * It's probably already installed, but just to be sure, run the command =sudo apt-get install= git in the terminal.
+
+   * =cd= to your lab folder and run =git init=
+
+   * Set some things:
+      * Set your user name with the command =git config --global user.name "John Doe"=
+      * Set your email address with the command =git config --global user.email johndoe@example.com=
+         * Whether it matters whose name and email you use remains to be seen...
+         * You can check your settings with =git config --list=
+
+   * If you need Git help and you don't feel like googling it, you can get the manual page for a Git command as such:
+      * =git help <verb>=
+      * =git <verb> --help=
+      * =man git-<verb>=
+      * For example, if you need help on help, you can type =git help help=
