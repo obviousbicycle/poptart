@@ -37,6 +37,10 @@ D = Data()  # an object to hold our system's services and state
 
 D.chargeLevel = ""
 
+D.x = ""
+D.y = ""
+D.theta = ""
+
 
 class DroneVideoDisplay(QtGui.QMainWindow):
     def __init__(self):
@@ -44,6 +48,10 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         super(DroneVideoDisplay, self).__init__()
 
         self.IMNUM = 1
+
+        #####
+        # Central Widget: imageBox
+        #####
 
         # Setup our very basic GUI - a label which fills the whole window and holds our image
         self.setWindowTitle('robot box')
@@ -79,7 +87,47 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         fname = "./image" + str(self.IMNUM) + ".png"
         self.image2 = cv2.imread( fname )
 
-        
+        #####
+        # Left Dock Widget: infoBox
+        #####
+
+        # infoBox is just a label holding a grid layout
+        self.infoBox = QtGui.QLabel(self)
+        self.infoBox.setMargin(80)
+
+        # Info displayed:
+        # x, y, theta
+        xLabel = QtGui.QLabel(self)
+        xLabel.setText("x: ")
+        self.xValue = QtGui.QLabel(self)
+        self.xValue.setText("")
+
+        yLabel = QtGui.QLabel(self)
+        yLabel.setText("y: ")
+        self.yValue = QtGui.QLabel(self)
+        self.yValue.setText("")
+
+        thetaLabel = QtGui.QLabel(self)
+        thetaLabel.setText("theta: ")
+        self.thetaValue = QtGui.QLabel(self)
+        self.thetaValue.setText("")
+
+        infoLayout = QtGui.QGridLayout()
+
+        infoLayout.addWidget(xLabel, 0, 0, QtCore.Qt.AlignRight)
+        infoLayout.addWidget(self.xValue, 0, 1)
+        infoLayout.addWidget(yLabel, 1, 0, QtCore.Qt.AlignRight)
+        infoLayout.addWidget(self.yValue, 1, 1)
+        infoLayout.addWidget(thetaLabel, 2, 0, QtCore.Qt.AlignRight)
+        infoLayout.addWidget(self.thetaValue, 2, 1)
+
+        self.infoBox.setLayout(infoLayout)
+
+        self.dockTest = QtGui.QDockWidget("lol", self)
+        self.dockTest.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
+        self.dockTest.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        self.dockTest.setWidget(self.infoBox)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.dockTest)
 
     # Called every CONNECTION_CHECK_PERIOD ms, if we haven't received anything since the last callback,
     # will assume we are having network troubles and display a message in the status bar
@@ -88,7 +136,7 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         self.communicationSinceTimer = False
 
     def RedrawCallback(self):
-        """ Where the image is drawn (I think) """
+
         global D
 
         if True:
@@ -126,6 +174,10 @@ class DroneVideoDisplay(QtGui.QMainWindow):
                     # what is the difference between QtGui.QImage and QtGui.QPixmap?
                     image = QtGui.QPixmap.fromImage(\
                              QtGui.QImage(DATA, WIDTH, HEIGHT, BYTESPERLINE, QtGui.QImage.Format_RGB888))
+
+                self.xValue.setText(D.x)
+                self.yValue.setText(D.y)
+                self.thetaValue.setText(D.theta)
 
                 tag = D.chargeLevel
                 self.tags = [ tag ]
@@ -190,8 +242,10 @@ def sensor_callback( data ):
 
     D.chargeLevel = str(int(data.chargeLevel * 100)) + '%'
 
-def something():
-    print 'hi'
+    D.x = '%.6f' % data.x
+    D.y = '%.6f' % data.y
+    D.theta = '%.6f' % data.theta
+
 
 if __name__=='__main__':
     import sys
