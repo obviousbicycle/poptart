@@ -27,7 +27,6 @@ import random
 
 
 # Some Constants
-CONNECTION_CHECK_PERIOD = 250 #ms
 GUI_UPDATE_PERIOD = 20 #ms
 DETECT_RADIUS = 4 # the radius of the circle drawn when a tag is detected
 
@@ -42,10 +41,10 @@ D.y = ""
 D.theta = ""
 
 
-class DroneVideoDisplay(QtGui.QMainWindow):
+class RobotBox(QtGui.QMainWindow):
     def __init__(self):
         # Construct the parent class
-        super(DroneVideoDisplay, self).__init__()
+        super(RobotBox, self).__init__()
 
         self.IMNUM = 1
 
@@ -54,7 +53,7 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         #####
 
         # Setup our very basic GUI - a label which fills the whole window and holds our image
-        self.setWindowTitle('robot box')
+        self.setWindowTitle('RobotBox')
         self.imageBox = QtGui.QLabel(self)
         self.setCentralWidget(self.imageBox)
         
@@ -67,16 +66,6 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         
         # Holds the status message to be displayed on the next GUI update
         self.statusMessage = ''
-
-        # Tracks whether we have received data since the last connection check
-        # This works because data comes in at 50Hz but we're checking for a connection at 4Hz
-        self.communicationSinceTimer = False
-        self.connected = False
-
-        # A timer to check whether we're still connected
-        self.connectionTimer = QtCore.QTimer(self)
-        self.connectionTimer.timeout.connect(self.ConnectionCallback)
-        self.connectionTimer.start(CONNECTION_CHECK_PERIOD)
         
         # A timer to redraw the GUI
         self.redrawTimer = QtCore.QTimer(self)
@@ -95,8 +84,7 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         self.infoBox = QtGui.QLabel(self)
         self.infoBox.setMargin(80)
 
-        # Info displayed:
-        # x, y, theta
+        # Position info
         xLabel = QtGui.QLabel(self)
         xLabel.setText("x: ")
         self.xValue = QtGui.QLabel(self)
@@ -112,6 +100,7 @@ class DroneVideoDisplay(QtGui.QMainWindow):
         self.thetaValue = QtGui.QLabel(self)
         self.thetaValue.setText("")
 
+        # Putting together layout and dock widget
         infoLayout = QtGui.QGridLayout()
 
         infoLayout.addWidget(xLabel, 0, 0, QtCore.Qt.AlignRight)
@@ -123,124 +112,71 @@ class DroneVideoDisplay(QtGui.QMainWindow):
 
         self.infoBox.setLayout(infoLayout)
 
-        self.dockTest = QtGui.QDockWidget("lol", self)
-        self.dockTest.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
-        self.dockTest.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        self.dockTest.setWidget(self.infoBox)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.dockTest)
-
-    # Called every CONNECTION_CHECK_PERIOD ms, if we haven't received anything since the last callback,
-    # will assume we are having network troubles and display a message in the status bar
-    def ConnectionCallback(self):
-        self.connected = self.communicationSinceTimer
-        self.communicationSinceTimer = False
+        self.infoDock = QtGui.QDockWidget("lol", self)
+        self.infoDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
+        self.infoDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        self.infoDock.setTitleBarWidget(QtGui.QWidget()) # no title
+        self.infoDock.setWidget(self.infoBox)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.infoDock)
 
     def RedrawCallback(self):
-
         global D
 
-        if True:
-            # We have some issues with locking between the display thread and the ros messaging thread due to the size of the image, so we need to lock the resources
-            self.imageLock.acquire()
-            try:
-                # if False:
-                #         DATA = self.image.data
-                #         WIDTH = self.image.width
-                #         HEIGHT = self.image.height
-                        
-                #         # Convert the ROS image into a QImage which we can display
-                #         image = QtGui.QPixmap.fromImage(QtGui.QImage(DATA,
-                #                                                      WIDTH, HEIGHT,
-                #                                                      QtGui.QImage.Format_RGB888))
+        self.imageLock.acquire()
+        try:
+            a = cv2.cvtColor(self.image2, cv2.COLOR_BGR2RGB)
+            WIDTH = a.shape[1]
+            HEIGHT = a.shape[0]
+            bytesPerComp = a.shape[2]
+            BYTESPERLINE = bytesPerComp*WIDTH
+            DATA = a.data
+            # below: PySide.
+            # what is the difference between QtGui.QImage and QtGui.QPixmap?
+            image = QtGui.QPixmap.fromImage(\
+                     QtGui.QImage(DATA, WIDTH, HEIGHT, BYTESPERLINE, QtGui.QImage.Format_RGB888))
 
-                if True:
-                    a = cv2.cvtColor(self.image2, cv2.COLOR_BGR2RGB)
-                    WIDTH = a.shape[1]
-                    HEIGHT = a.shape[0]
-                    bytesPerComp = a.shape[2]
-                    """
-                    WIDTH = 100
-                    HEIGHT = 100
-                    a = np.random.randint(0,256,size=(HEIGHT,WIDTH,3))
-                    print "type(a) is", type(a)
-                    a = a.astype(np.uint32)
-                    DATA = (255 << 24 | a[:,:,2] << 16 | a[:,:,1] << 8 | a[:,:,0]) #.flatten() 
-                    WIDTH = a.shape[1]
-                    HEIGHT = a.shape[0]
-                    """
-                    BYTESPERLINE = bytesPerComp*WIDTH
-                    DATA = a.data
-                    # below: PySide.
-                    # what is the difference between QtGui.QImage and QtGui.QPixmap?
-                    image = QtGui.QPixmap.fromImage(\
-                             QtGui.QImage(DATA, WIDTH, HEIGHT, BYTESPERLINE, QtGui.QImage.Format_RGB888))
+            self.xValue.setText(D.x)
+            self.yValue.setText(D.y)
+            self.thetaValue.setText(D.theta)
 
-                self.xValue.setText(D.x)
-                self.yValue.setText(D.y)
-                self.thetaValue.setText(D.theta)
+            tag = D.chargeLevel
+            self.tags = [ tag ]
+                    
+            if len(self.tags) > 0:
+                self.tagLock.acquire()
+                try:
+                    painter = QtGui.QPainter()
+                    painter.begin(image)
+                    painter.setPen(QtGui.QColor(0,0,42))
+                    painter.setBrush(QtGui.QColor(0,0,42))
+                    painter.drawText(10,10,'test')
+                    for string_from_tag in self.tags:
+                        r = QtCore.QRectF(42,142,
+                                          DETECT_RADIUS*2,DETECT_RADIUS*2)
+                        painter.drawEllipse(r)
+                        painter.drawText(100, 100,
+                                         string_from_tag)
+                    painter.end()
+                finally:
+                    self.tagLock.release()
+        finally:
+            self.imageLock.release()
 
-                tag = D.chargeLevel
-                self.tags = [ tag ]
-                        
-                if len(self.tags) > 0:
-                    self.tagLock.acquire()
-                    try:
-                        # THIS IS WHERE WE DRAW THINGS
-                        # (updated every frame)
-                        painter = QtGui.QPainter()
-                        painter.begin(image)
-                        painter.setPen(QtGui.QColor(0,0,42))
-                        painter.setBrush(QtGui.QColor(0,0,42))
-                        painter.drawText(10,10,'test')
-                        for string_from_tag in self.tags:
-                            r = QtCore.QRectF(42,142,
-                                              DETECT_RADIUS*2,DETECT_RADIUS*2)
-                            painter.drawEllipse(r)
-                            painter.drawText(100, 100,
-                                             string_from_tag)
-                        painter.end()
-                    finally:
-                        self.tagLock.release()
-            finally:
-                self.imageLock.release()
-
-            # We could  do more processing (eg OpenCV) here if we wanted to,
-            # but for now lets just display the window.
-            self.resize(image.width(),image.height())
-            self.imageBox.setPixmap(image)
+        # We could  do more processing (eg OpenCV) here if we wanted to,
+        # but for now lets just display the window.
+        self.resize(image.width(),image.height())
+        self.imageBox.setPixmap(image)
 
         # Update the status bar to show the current drone status & battery level
         self.statusBar().showMessage("Charge: " + D.chargeLevel)
 
-    def ReceiveImage(self,data):
-        # Indicate that new data has been received (thus we are connected)
-        self.communicationSinceTimer = True
-        self.IMNUM = 1
-        print "in ReceiveImage"
-
-        # We have some issues with locking between the GUI update thread and the ROS messaging thread due to the size of the image, so we need to lock the resources
-        self.imageLock.acquire()
-        try:
-            #self.image = data # Save the ros image for processing by the display thread
-            fname = "./image" + str(self.IMNUM) + ".png"
-            self.image2 = cv2.imread( fname )
-            self.image = self.image2
-            #print "type of image2 is", type(self.image2)
-            #print "dir of image2 is", dir(self.image2)
-            #print "self.image2.shape is", self.image2.shape
-        finally:
-            self.imageLock.release()
-
-    def ReceiveNavdata(self,navdata):
-        """ not much happening """
-        print "In ReceiveNavdata"
 
 def sensor_callback( data ):
     """ sensor_callback is called for each sensorPacket message
     """
     global D
 
-    D.chargeLevel = str(int(data.chargeLevel * 100)) + '%'
+    D.chargeLevel = str(int(round(data.chargeLevel * 100))) + '%'
 
     D.x = '%.6f' % data.x
     D.y = '%.6f' % data.y
@@ -249,13 +185,13 @@ def sensor_callback( data ):
 
 if __name__=='__main__':
     import sys
-    rospy.init_node('ardrone_video_display')
+    rospy.init_node('RobotBox')
 
     # set up a callback for the sensorPacket stream, i.e., "topic"
     rospy.Subscriber( 'sensorPacket', SensorPacket, sensor_callback )
 
     app = QtGui.QApplication(sys.argv)
-    display = DroneVideoDisplay()
+    display = RobotBox()
     display.show()
     status = app.exec_()
     rospy.signal_shutdown('Great Flying!')
