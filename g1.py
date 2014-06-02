@@ -80,9 +80,12 @@ class RobotBox(QtGui.QMainWindow):
         # Left Dock Widget: infoBox
         #####
 
-        # infoBox is just a label holding a grid layout
-        self.infoBox = QtGui.QLabel(self)
-        self.infoBox.setMargin(80)
+        # infoBox is just a generic widget holding a grid layout
+        self.infoBox = QtGui.QWidget(self)
+
+        # Save/load image buttons
+        self.saveImage = QtGui.QPushButton("&Save")
+        self.loadImage = QtGui.QPushButton("&Load")
 
         # Position info
         xLabel = QtGui.QLabel(self)
@@ -102,6 +105,7 @@ class RobotBox(QtGui.QMainWindow):
 
         # Putting together layout and dock widget
         infoLayout = QtGui.QGridLayout()
+        self.infoBox.setLayout(infoLayout)
 
         infoLayout.addWidget(xLabel, 0, 0, QtCore.Qt.AlignRight)
         infoLayout.addWidget(self.xValue, 0, 1)
@@ -109,11 +113,11 @@ class RobotBox(QtGui.QMainWindow):
         infoLayout.addWidget(self.yValue, 1, 1)
         infoLayout.addWidget(thetaLabel, 2, 0, QtCore.Qt.AlignRight)
         infoLayout.addWidget(self.thetaValue, 2, 1)
+        infoLayout.addWidget(self.saveImage, 3, 0)
+        infoLayout.addWidget(self.loadImage, 3, 1)
 
-        self.infoBox.setLayout(infoLayout)
-
-        self.infoDock = QtGui.QDockWidget("lol", self)
-        self.infoDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
+        self.infoDock = QtGui.QDockWidget("", self)
+        self.infoDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
         self.infoDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
         self.infoDock.setTitleBarWidget(QtGui.QWidget()) # no title
         self.infoDock.setWidget(self.infoBox)
@@ -124,16 +128,23 @@ class RobotBox(QtGui.QMainWindow):
 
         self.imageLock.acquire()
         try:
-            a = cv2.cvtColor(self.image2, cv2.COLOR_BGR2RGB)
-            WIDTH = a.shape[1]
-            HEIGHT = a.shape[0]
-            bytesPerComp = a.shape[2]
-            BYTESPERLINE = bytesPerComp*WIDTH
-            DATA = a.data
-            # below: PySide.
-            # what is the difference between QtGui.QImage and QtGui.QPixmap?
-            image = QtGui.QPixmap.fromImage(\
-                     QtGui.QImage(DATA, WIDTH, HEIGHT, BYTESPERLINE, QtGui.QImage.Format_RGB888))
+            # a = cv2.cvtColor(self.image2, cv2.COLOR_BGR2RGB)
+            # WIDTH = a.shape[1]
+            # HEIGHT = a.shape[0]
+            # bytesPerComp = a.shape[2]
+            # BYTESPERLINE = bytesPerComp*WIDTH
+            # DATA = a.data
+            # # below: PySide.
+            # # what is the difference between QtGui.QImage and QtGui.QPixmap?
+            # image = QtGui.QPixmap.fromImage(\
+            #          QtGui.QImage(DATA, WIDTH, HEIGHT, BYTESPERLINE, QtGui.QImage.Format_RGB888))
+
+            # Default image is just a white square
+            blank = QtGui.QPixmap.fromImage(\
+                QtGui.QImage(300, 300, QtGui.QImage.Format_RGB888))
+            blank.fill(QtGui.QColor(255,255,255))
+
+            image = blank
 
             self.xValue.setText(D.x)
             self.yValue.setText(D.y)
