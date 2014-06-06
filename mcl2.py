@@ -381,9 +381,9 @@ class RobotBox(QtGui.QMainWindow):
         displayLayout.setRowStretch(11, 1)
 
         # Putting together layout and dock widget
-        actionLayout.addWidget(self.saveButton, 0, 0)
-        actionLayout.addWidget(self.loadButton, 1, 0)
-        actionLayout.addWidget(self.clearButton, 2, 0)
+        actionLayout.addWidget(self.saveButton, 0, 0, QtCore.Qt.AlignHCenter)
+        actionLayout.addWidget(self.loadButton, 1, 0, QtCore.Qt.AlignHCenter)
+        actionLayout.addWidget(self.clearButton, 2, 0, QtCore.Qt.AlignHCenter)
         actionLayout.addWidget(displayBox, 3, 0)
 
         actionTitle = QtGui.QLabel(self)
