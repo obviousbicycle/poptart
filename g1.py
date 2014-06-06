@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
-# A basic video display window for the tutorial "Up and flying with the AR.Drone and ROS | Getting Started"
-# https://github.com/mikehamer/ardrone_tutorials_getting_started
+# A window displaying the Create's movements based on its odometry
 
-# Import the ROS libraries, and load the manifest file which through <depend package=... /> will give us access to the project dependencies
-#import roslib; roslib.load_manifest('ardrone_tutorials')
+# Import the ROS libraries, and load the manifest file which through
+# <depend package=... /> will give us access to the project dependencies
 import roslib; roslib.load_manifest('irobot_mudd')
 import rospy
 
@@ -16,7 +15,8 @@ from irobot_mudd.msg import *
 import time
 import math
 
-# We need to use resource locking to handle synchronization between GUI thread and ROS topic callbacks
+# We need to use resource locking to handle synchronization between GUI thread
+# and ROS topic callbacks
 from threading import Lock
 
 # The GUI libraries
@@ -42,7 +42,7 @@ D.chargeLevel = ""
 D.loadedImage = QtGui.QImage()
 
 # holds robot trail
-D.trail = set()
+D.trail = []
 
 # in meters/degrees
 D.x = 0.0
@@ -76,12 +76,14 @@ class RobotBox(QtGui.QMainWindow):
         Central Widget: imageBox
         Displays top-down map over the robot
         """
-        # Setup our very basic GUI - a label which fills the whole window and holds our image
+        # Setup our very basic GUI - a label which fills the whole window and
+        # holds our image
         self.setWindowTitle('RobotBox')
         self.imageBox = QtGui.QLabel(self)
         self.setCentralWidget(self.imageBox)
         
-        # Holds the image frame received from the drone and later processed by the GUI
+        # Holds the image frame received from the drone and later processed by
+        # the GUI
         self.image = None
         self.imageLock = Lock()
 
@@ -186,13 +188,17 @@ class RobotBox(QtGui.QMainWindow):
         self.lightBox.setLayout(lightLayout)
 
         lightLayout.addWidget(backLeftLabel, 0, 0, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.backLeftValue, 1, 0, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.backLeftValue, 1, 0,\
+            QtCore.Qt.AlignHCenter)
         lightLayout.addWidget(frontLeftLabel, 0, 1, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.frontLeftValue, 1, 1, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.frontLeftValue, 1, 1,\
+            QtCore.Qt.AlignHCenter)
         lightLayout.addWidget(frontRightLabel, 0, 2, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.frontRightValue, 1, 2, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.frontRightValue, 1, 2,\
+            QtCore.Qt.AlignHCenter)
         lightLayout.addWidget(backRightLabel, 0, 3, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.backRightValue, 1, 3, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.backRightValue, 1, 3,\
+            QtCore.Qt.AlignHCenter)
 
         lightTitle = QtGui.QLabel(self)
         lightTitle.setText("Light sensors:")
@@ -274,6 +280,9 @@ class RobotBox(QtGui.QMainWindow):
             self.frontRightValue.setText(str(D.frontRightSensor))
             self.backRightValue.setText(str(D.backRightSensor))
 
+            # updating imageBox
+            # right now, it just redraws the entire image every time the GUI is
+            # updated...
             if D.loadedImage.isNull():
             # Default image is just a white square
                 WIDTH = 300
@@ -289,24 +298,27 @@ class RobotBox(QtGui.QMainWindow):
                 image = QtGui.QPixmap.fromImage(D.loadedImage)
 
             origin = [WIDTH/2, HEIGHT/2]
+            location = (origin[0]+xDisplay,origin[1]-yDisplay)
 
             painter = QtGui.QPainter()
             painter.begin(image)
 
             # drawing robot trail
             # dreadfully inefficient as implemented
-            if DRAW_TRAIL:
-                D.trail.add((origin[0]+xDisplay,origin[1]-yDisplay))
+            if location not in D.trail: D.trail += [location]
+            if DRAW_TRAIL and len(D.trail) > 1:
                 painter.setPen(QtGui.QColor(255,0,0)) # red outline and fill
                 painter.setBrush(QtGui.QColor(255,0,0))
-                for p in D.trail:
-                    painter.drawPoint(p[0],p[1])
+                for p in range(1,len(D.trail)):
+                    painter.drawLine(D.trail[p-1][0],D.trail[p-1][1],\
+                        D.trail[p][0],D.trail[p][1])
 
             # drawing robot location
-            painter.setPen(QtGui.QColor(0,0,255)) # blue outline and fill
-            painter.setBrush(QtGui.QColor(0,0,255))
+            painter.setPen(QtGui.QColor(0,0,0)) # black outline
+            painter.setBrush(QtGui.QColor(255,255,255)) # white fill
             scale = 1.0 * 100.0**USE_CM # one pixel represents how many (c)m?
-            painter.drawEllipse(QtCore.QPoint(origin[0]+xDisplay,origin[1]-yDisplay),6,6)
+            painter.drawEllipse(\
+                QtCore.QPoint(location[0],location[1]),6,6)
 
             painter.end()
 
@@ -342,7 +354,8 @@ class RobotBox(QtGui.QMainWindow):
             self.setWindowTitle('RobotBox - ' + fname)
             self.statusBar().showMessage("Image saved to " + fname, 3000)
         elif saving.isNull():
-            self.statusBar().showMessage("Failed to convert pixmap to image", 3000)
+            self.statusBar().showMessage("Failed to convert pixmap to image",\
+                3000)
 
     @Slot()
     def LoadImage(self):
@@ -369,7 +382,7 @@ class RobotBox(QtGui.QMainWindow):
     def EraseTrail(self):
         """ receives click signal from eraseButton """
         if DRAW_TRAIL:
-            D.trail.clear()
+            D.trail = []
             self.statusBar().showMessage("Erased trail", 3000)
         else:
             self.statusBar().showMessage("What's a trail?", 3000)
@@ -379,12 +392,14 @@ class RobotBox(QtGui.QMainWindow):
         """ receives click signal from xResetButton """
         if math.ceil(D.x) != 0:
             D.xDiff = D.x
+            D.trail = []
 
     @Slot()
     def YReset(self):
         """ receives click signal from yResetButton """
         if math.ceil(D.y) != 0:
             D.yDiff = D.y
+            D.trail = []
 
     @Slot()
     def ThetaReset(self):

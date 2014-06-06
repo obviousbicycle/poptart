@@ -66,8 +66,8 @@ def init():
     rospy.wait_for_service('song') # wait until our voice is available
     D.song = rospy.ServiceProxy('song', Song) # D.song is our "speaker" 
 
+    # subscribes to data stream from USB controller
     rospy.Subscriber( 'controller_data', String, controller_callback )
-
 
 
 
