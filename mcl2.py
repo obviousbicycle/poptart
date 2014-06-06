@@ -544,12 +544,14 @@ class RobotBox(QtGui.QMainWindow):
                         painter.drawLine(D.trail[p-1][0], D.trail[p-1][1],
                                          D.trail[p][0], D.trail[p][1])
 
-            # drawing robot location
+            # drawing robot location and pointer
             if D.showRobot:
                 painter.setPen(QtGui.QColor(0,0,0)) # black outline
                 painter.setBrush(QtGui.QColor(0,0,255)) # blue fill
                 painter.drawEllipse(
                   QtCore.QPoint(location[0],location[1]), 6, 6)
+
+                painter.setPen(QtGui.QColor(0,0,255))
 
             painter.end()
 
