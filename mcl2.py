@@ -31,16 +31,23 @@ import random
 GUI_UPDATE_PERIOD = 20 # ms
 USE_CM = 1 # set to 0 to use meters in position data
 WIDGET_SPACING = 10 # pixels of space between widgets
+SCALE = 1.0 # how many distance units for one pixel?
 
 
 class Data: pass    # empty class for a generic data holder
 D = Data()  # an object to hold our system's services and state
 
-D.chargeLevel = ""
-
+# visual-related globals
 # for image loading
 D.loadedImage = QtGui.QImage()
+# toggle various things for display purposes
+D.showRobot = True
+D.makeTrail = 0
+D.makeMCL = 0
+# dependent on image size
+D.minDensity = 1.0/90000
 
+# location-related globals
 # list of points where robot was during a GUI update
 D.trail = []
 # holds MCL particles and respective probabilities
@@ -48,11 +55,9 @@ D.particles = []
 D.probabilities = []
 # true if the robot has moved since last GUI update
 D.recentMove = False
-# toggle various things
-D.showRobot = True
-D.makeTrail = 0
-D.makeMCL = 0
 
+# odometry- and sensor-related globals
+# for various data
 # in meters/degrees
 D.x = 0.0
 D.y = 0.0
@@ -72,6 +77,13 @@ D.backLeftThreshold = 800
 D.frontLeftThreshold = 700
 D.frontRightThreshold = 1000
 D.backRightThreshold = 1000
+# just because
+D.chargeLevel = ""
+
+# parameters changeable via slider
+D.pointDensity = 0.01
+D.noiseXY = 4.0
+D.noiseTheta = 2.5
 
 
 class RobotBox(QtGui.QMainWindow):
@@ -109,67 +121,102 @@ class RobotBox(QtGui.QMainWindow):
         self.redrawTimer.start(GUI_UPDATE_PERIOD)
 
     def init_left(self):
-        """Left Dock Widget: positionBox
-        Displays position data from sensorPacket
+        """Left Dock Widgets: positionGroup, actionGroup
+        positionGroup displays position data from sensorPacket
+        actionGroup shows image actions
         """
-        # positionBox is just a generic widget holding a grid layout
-        positionBox = QtGui.QWidget(self.imageBox)
+        leftBox = QtGui.QWidget(self)
+        leftLayout = QtGui.QGridLayout()
+        leftBox.setLayout(leftLayout)
 
+        # positionGroup
+        positionGroup = QtGui.QGroupBox("Position data")
+        positionGroup.setAlignment(QtCore.Qt.AlignHCenter)
         # Position info + reset buttons
+        # x data
         xLabel = QtGui.QLabel(self)
         xLabel.setText("x (" + USE_CM*"c" + "m): ")
         self.xValue = QtGui.QLabel(self)
         self.xValue.setText("")
         xResetButton = QtGui.QPushButton("Reset", self)
         xResetButton.clicked.connect(self.x_reset)
-
+        # y data
         yLabel = QtGui.QLabel(self)
         yLabel.setText("y (" + USE_CM*"c" + "m): ")
         self.yValue = QtGui.QLabel(self)
         self.yValue.setText("")
         yResetButton = QtGui.QPushButton("Reset", self)
         yResetButton.clicked.connect(self.y_reset)
-
+        # theta data
         thetaLabel = QtGui.QLabel(self)
         thetaLabel.setText("theta (deg): ")
         self.thetaValue = QtGui.QLabel(self)
         self.thetaValue.setText("")
         thetaResetButton = QtGui.QPushButton("Reset", self)
         thetaResetButton.clicked.connect(self.theta_reset)
-
+        # reset all button
         allResetButton = QtGui.QPushButton("Reset all", self)
         allResetButton.clicked.connect(self.all_reset)
-
-        # Putting together layout and dock widget
+        # Assembling layout for positionGroup
         positionLayout = QtGui.QGridLayout()
-        positionBox.setLayout(positionLayout)
-
-        positionLayout.setRowMinimumHeight(0, WIDGET_SPACING)
+        positionGroup.setLayout(positionLayout)
+        positionLayout.setRowStretch(0, 1)
+        # x
         positionLayout.addWidget(xLabel, 1, 0, QtCore.Qt.AlignRight)
         positionLayout.addWidget(self.xValue, 1, 1)
         positionLayout.addWidget(xResetButton, 2, 1)
         positionLayout.setRowMinimumHeight(3, WIDGET_SPACING)
+        # y
         positionLayout.addWidget(yLabel, 4, 0, QtCore.Qt.AlignRight)
         positionLayout.addWidget(self.yValue, 4, 1)
         positionLayout.addWidget(yResetButton, 5, 1)
         positionLayout.setRowMinimumHeight(6, WIDGET_SPACING)
+        # theta
         positionLayout.addWidget(thetaLabel, 7, 0, QtCore.Qt.AlignRight)
         positionLayout.addWidget(self.thetaValue, 7, 1)
         positionLayout.addWidget(thetaResetButton, 8, 1)
         positionLayout.setRowMinimumHeight(9, 2*WIDGET_SPACING)
+        # reset all
         positionLayout.addWidget(allResetButton, 10, 1)
         positionLayout.setRowStretch(11, 1)
 
-        positionTitle = QtGui.QLabel(self)
-        positionTitle.setText("Position data")
-        positionTitle.setAlignment(QtCore.Qt.AlignHCenter)
+        # actionGroup
+        actionGroup = QtGui.QGroupBox("Image actions")
+        actionGroup.setAlignment(QtCore.Qt.AlignHCenter)
+        # Image action buttons
+        # save
+        self.saveButton = QtGui.QPushButton("&Save image", self)
+        self.saveButton.clicked.connect(self.save_image)
+        # load
+        self.loadButton = QtGui.QPushButton("&Load map", self)
+        self.loadButton.clicked.connect(self.load_image)
+        # clear
+        self.clearButton = QtGui.QPushButton("Clear image && map", self)
+        self.clearButton.clicked.connect(self.clear_image)
+        # Assembling layout for actionGroup
+        actionLayout = QtGui.QGridLayout()
+        actionGroup.setLayout(actionLayout)
+        actionLayout.setRowStretch(0, 1)
+        # save
+        actionLayout.addWidget(self.saveButton, 1, 0, QtCore.Qt.AlignHCenter)
+        # load
+        actionLayout.addWidget(self.loadButton, 2, 0, QtCore.Qt.AlignHCenter)
+        # clear
+        actionLayout.addWidget(self.clearButton, 3, 0, QtCore.Qt.AlignHCenter)
+        actionLayout.setRowStretch(4, 1)
 
-        positionDock = QtGui.QDockWidget("", self)
-        positionDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
-        positionDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        positionDock.setTitleBarWidget(positionTitle)
-        positionDock.setWidget(positionBox)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, positionDock)
+        # Assembling top-level layout
+        leftLayout.setRowStretch(0, 1)
+        leftLayout.addWidget(positionGroup, 1, 0)
+        leftLayout.addWidget(actionGroup, 2, 0)
+        leftLayout.setRowStretch(3, 1)
+        # Assembling dock
+        leftDock = QtGui.QDockWidget("", self)
+        leftDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
+        leftDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        leftDock.setTitleBarWidget(QtGui.QWidget(self))
+        leftDock.setWidget(leftBox)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, leftDock)
 
     def init_bottom(self):
         """Bottom Dock Widget: lightBox
@@ -179,28 +226,28 @@ class RobotBox(QtGui.QMainWindow):
         lightBox = QtGui.QWidget(self)
 
         readingsLabel = QtGui.QLabel(self)
-        readingsLabel.setText("Readings:")
+        readingsLabel.setText("Readings")
         thresholdsLabel = QtGui.QLabel(self)
-        thresholdsLabel.setText("Thresholds:")
+        thresholdsLabel.setText("Thresholds")
 
         # Light sensor info
         backLeftLabel = QtGui.QLabel(self)
-        backLeftLabel.setText("Back left: ")
+        backLeftLabel.setText("Back left")
         self.backLeftValue = QtGui.QLabel(self)
         self.backLeftValue.setText("")
 
         frontLeftLabel = QtGui.QLabel(self)
-        frontLeftLabel.setText("Front left: ")
+        frontLeftLabel.setText("Front left")
         self.frontLeftValue = QtGui.QLabel(self)
         self.frontLeftValue.setText("")
 
         frontRightLabel = QtGui.QLabel(self)
-        frontRightLabel.setText("Front right: ")
+        frontRightLabel.setText("Front right")
         self.frontRightValue = QtGui.QLabel(self)
         self.frontRightValue.setText("")
 
         backRightLabel = QtGui.QLabel(self)
-        backRightLabel.setText("Back right: ")
+        backRightLabel.setText("Back right")
         self.backRightValue = QtGui.QLabel(self)
         self.backRightValue.setText("")
 
@@ -275,58 +322,31 @@ class RobotBox(QtGui.QMainWindow):
         self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, lightDock)
 
     def init_right(self):
-        """Right Dock Widget: actionBox
-        For changing settings and stuff
+        """Right Dock Widget: displayGroup, parameterGroup
+        displayGroup changes settings and stuff
+        parameterGroup changes parameters and stuff
         """
-        # actionBox is just a generic widget holding a grid layout
-        actionBox = QtGui.QWidget(self)
-        actionLayout = QtGui.QGridLayout(actionBox)
-        actionBox.setLayout(actionLayout)
+        rightBox = QtGui.QWidget(self)
+        rightLayout = QtGui.QGridLayout()
+        rightBox.setLayout(rightLayout)
 
-        # Image action buttons
-        self.saveButton = QtGui.QPushButton("&Save image", self)
-        self.saveButton.clicked.connect(self.save_image)
-
-        self.loadButton = QtGui.QPushButton("&Load map", self)
-        self.loadButton.clicked.connect(self.load_image)
-
-        self.clearButton = QtGui.QPushButton("Clear image && map", self)
-        self.clearButton.clicked.connect(self.clear_image)
-
-        # Display settings
-        displayBox = QtGui.QWidget(actionBox)
-        displayLayout = QtGui.QGridLayout(displayBox)
-        displayBox.setLayout(displayLayout)
-        displayLayout.setColumnStretch(0, 1)
-        displayLayout.setColumnMinimumWidth(2, WIDGET_SPACING)
-        displayLayout.setColumnMinimumWidth(4, WIDGET_SPACING)
-        displayLayout.setColumnStretch(6, 1)
-
+        # displayGroup
+        displayGroup = QtGui.QGroupBox("Display settings")
+        displayGroup.setAlignment(QtCore.Qt.AlignHCenter)
         # Robot marker
         robotLabel = QtGui.QLabel(self)
-        robotLabel.setText("Robot marker:")
-
+        robotLabel.setText("Robot marker")
         markerGroup = QtGui.QButtonGroup(self)
-
         self.showRobotButton = QtGui.QRadioButton("Show", self)
         self.showRobotButton.clicked.connect(self.show_robot)
         markerGroup.addButton(self.showRobotButton)
         self.hideRobotButton = QtGui.QRadioButton("Hide", self)
         self.hideRobotButton.clicked.connect(self.hide_robot)
         markerGroup.addButton(self.hideRobotButton)
-
-        displayLayout.setRowStretch(0, 1)
-        displayLayout.addWidget(robotLabel, 1, 1)
-        displayLayout.addWidget(self.showRobotButton, 2, 1)
-        displayLayout.addWidget(self.hideRobotButton, 2, 3)
-        displayLayout.addWidget(QtGui.QWidget(self), 2, 5)
-
         # Trails
         trailLabel = QtGui.QLabel(self)
-        trailLabel.setText("Robot trail:")
-
+        trailLabel.setText("Robot trail")
         trailGroup = QtGui.QButtonGroup(self)
-
         self.showTrailButton = QtGui.QRadioButton("Show", self)
         self.showTrailButton.clicked.connect(self.show_trail)
         trailGroup.addButton(self.showTrailButton)
@@ -338,20 +358,10 @@ class RobotBox(QtGui.QMainWindow):
         trailGroup.addButton(self.noTrailButton)
         self.eraseTrailButton = QtGui.QPushButton("Erase", self)
         self.eraseTrailButton.clicked.connect(self.erase_trail)
-
-        displayLayout.setRowMinimumHeight(3, WIDGET_SPACING)
-        displayLayout.addWidget(trailLabel, 4, 1)
-        displayLayout.addWidget(self.showTrailButton, 5, 1)
-        displayLayout.addWidget(self.hideTrailButton, 5, 2)
-        displayLayout.addWidget(self.noTrailButton, 5, 3)
-        displayLayout.addWidget(self.eraseTrailButton, 6, 2)
-
         # MCL
         MCLLabel = QtGui.QLabel(self)
-        MCLLabel.setText("Monte Carlo:")
-
+        MCLLabel.setText("Monte Carlo")
         MCLGroup = QtGui.QButtonGroup(self)
-
         self.showMCLButton = QtGui.QRadioButton("Show", self)
         self.showMCLButton.clicked.connect(self.show_mcl)
         MCLGroup.addButton(self.showMCLButton)
@@ -363,8 +373,28 @@ class RobotBox(QtGui.QMainWindow):
         MCLGroup.addButton(self.noMCLButton)
         self.erase_mclButton = QtGui.QPushButton("Erase", self)
         self.erase_mclButton.clicked.connect(self.erase_mcl)
-
+        # Assembling layout for displayGroup
+        displayLayout = QtGui.QGridLayout()
+        displayGroup.setLayout(displayLayout)
+        displayLayout.setColumnStretch(0, 1)
+        displayLayout.setColumnMinimumWidth(2, WIDGET_SPACING)
+        displayLayout.setColumnMinimumWidth(4, WIDGET_SPACING)
+        displayLayout.setColumnStretch(6, 1)
+        # first section: marker
+        displayLayout.setRowStretch(0, 1)
+        displayLayout.addWidget(robotLabel, 1, 1)
+        displayLayout.addWidget(self.showRobotButton, 2, 1)
+        displayLayout.addWidget(self.hideRobotButton, 2, 3)
+        displayLayout.addWidget(QtGui.QWidget(self), 2, 5)
+        displayLayout.setRowMinimumHeight(3, WIDGET_SPACING)
+        # second section: trail
+        displayLayout.addWidget(trailLabel, 4, 1)
+        displayLayout.addWidget(self.showTrailButton, 5, 1)
+        displayLayout.addWidget(self.hideTrailButton, 5, 2)
+        displayLayout.addWidget(self.noTrailButton, 5, 3)
+        displayLayout.addWidget(self.eraseTrailButton, 6, 2)
         displayLayout.setRowMinimumHeight(7, WIDGET_SPACING)
+        # third section: mcl
         displayLayout.addWidget(MCLLabel, 8, 1)
         displayLayout.addWidget(self.showMCLButton, 9, 1)
         displayLayout.addWidget(self.hide_mclButton, 9, 2)
@@ -372,22 +402,37 @@ class RobotBox(QtGui.QMainWindow):
         displayLayout.addWidget(self.erase_mclButton, 10, 2)
         displayLayout.setRowStretch(11, 1)
 
-        # Putting together layout and dock widget
-        actionLayout.addWidget(self.saveButton, 0, 0, QtCore.Qt.AlignHCenter)
-        actionLayout.addWidget(self.loadButton, 1, 0, QtCore.Qt.AlignHCenter)
-        actionLayout.addWidget(self.clearButton, 2, 0, QtCore.Qt.AlignHCenter)
-        actionLayout.addWidget(displayBox, 3, 0)
+        # parameterGroup
+        parameterGroup = QtGui.QGroupBox("Parameters")
+        parameterGroup.setAlignment(QtCore.Qt.AlignHCenter)
+        # mcl point density
+        self.densitySlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.densitySlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.densitySlider.setMinimum(D.minDensity)
+        self.densitySlider.setMaximum(1.0)
+        self.densitySlider.setTickInterval(0.001)
+        self.densitySlider.setValue(D.pointDensity)
+        self.densitySlider.valueChanged.connect(self.density_change)
+        # Assembling layout for parameterGroup
+        parameterLayout = QtGui.QGridLayout()
+        parameterGroup.setLayout(parameterLayout)
+        parameterLayout.setRowStretch(0, 1)
+        parameterLayout.addWidget(self.densitySlider, 1, 0)
+        parameterLayout.setRowStretch(20, 1)
 
-        actionTitle = QtGui.QLabel(self)
-        actionTitle.setText("Display settings")
-        actionTitle.setAlignment(QtCore.Qt.AlignHCenter)
-
-        actionDock = QtGui.QDockWidget("", self)
-        actionDock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea)
-        actionDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        actionDock.setTitleBarWidget(actionTitle)
-        actionDock.setWidget(actionBox)
-        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, actionDock)
+        # assembling top-level layout
+        rightLayout.setRowStretch(0, 1)
+        rightLayout.addWidget(displayGroup, 1, 0)
+        rightLayout.setRowStretch(2, 1)
+        rightLayout.addWidget(parameterGroup, 3, 0)
+        rightLayout.setRowStretch(4, 1)
+        # assembling dock
+        rightDock = QtGui.QDockWidget("", self)
+        rightDock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea)
+        rightDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        rightDock.setTitleBarWidget(QtGui.QWidget(self))
+        rightDock.setWidget(rightBox)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, rightDock)
 
         # robot marker is shown and trail is not calculated upon start
         self.showRobotButton.setChecked(True)
@@ -434,12 +479,11 @@ class RobotBox(QtGui.QMainWindow):
                 HEIGHT = D.loadedImage.height()
                 image = QtGui.QPixmap.fromImage(D.loadedImage)
             area = WIDTH*HEIGHT
-            scale = 1.0 # how many distance units for one pixel?
             origin = [WIDTH/2, HEIGHT/2]
             # most graphics dealios consider top-left corner to be the
             # origin, so we need to adjust for that
-            location = (origin[0] + scale*xDisplay,
-                        origin[1] - scale*yDisplay,
+            location = (origin[0] + SCALE*xDisplay,
+                        origin[1] - SCALE*yDisplay,
                         D.theta)
 
             # drawing time
@@ -448,13 +492,13 @@ class RobotBox(QtGui.QMainWindow):
             # drawing MCL particles
             # hold on to yer britches son cause this is one wild ride
             if D.makeTrail and D.makeMCL:
-                pDensity = int(area/100)
+                numPoints = int(area*D.pointDensity)
                 if not D.particles:
                     # initially, every point has an equal probability
                     # of being the robot's actual location
-                    D.probabilities = [1.0/pDensity]*pDensity
+                    D.probabilities = [1.0/numPoints]*numPoints
                     # generate points with random x, y, theta
-                    for n in range(pDensity):
+                    for n in range(numPoints):
                         p = [random.randint(0, WIDTH-1),
                              random.randint(0, HEIGHT-1),
                              random.randint(0,360)]
@@ -491,27 +535,26 @@ class RobotBox(QtGui.QMainWindow):
                         newProbs = []
                         sumProb = math.fsum(oldProbs)
                         cumulativeProb = [math.fsum(oldProbs[i::-1]) for i in
-                                          range(pDensity)]
+                                          range(numPoints)]
                         counter = 0
-                        for n in range(pDensity):
+                        for n in range(numPoints):
                             # step approach
                             newGen.append(oldGen[counter])
                             newProbs.append(oldProbs[counter]/sumProb)
-                            while n*sumProb/pDensity > cumulativeProb[counter]:
+                            while (
+                              n*sumProb/numPoints > cumulativeProb[counter]):
                                 counter += 1
                         # add some noise to each new point
-                        noise = 4.0
-                        noiseTheta = 2.5
                         D.particles = map(lambda p: [
-                                            random.gauss(p[0],noise),
-                                            random.gauss(p[1],noise),
-                                            random.gauss(p[2],noiseTheta)
+                                            random.gauss(p[0],D.noiseXY),
+                                            random.gauss(p[1],D.noiseXY),
+                                            random.gauss(p[2],D.noiseTheta)
                                             ],
                                           newGen)
                         D.probabilities = newProbs
                 # draw the particles now, if we want
                 if D.makeMCL == 2:
-                    pRadius = 2
+                    pointRadius = 2
                     #mostRed = max(D.probabilities)
                     #mostPurple = min(D.probabilities)
                     index = 0
@@ -526,7 +569,7 @@ class RobotBox(QtGui.QMainWindow):
                         painter.drawEllipse(
                           QtCore.QPoint(
                             D.particles[index][0], D.particles[index][1]), 
-                            pRadius, pRadius)
+                            pointRadius, pointRadius)
                         index += 1
 
             # drawing robot trail
@@ -546,12 +589,29 @@ class RobotBox(QtGui.QMainWindow):
 
             # drawing robot location and pointer
             if D.showRobot:
+                markerRadius = 6
                 painter.setPen(QtGui.QColor(0,0,0)) # black outline
                 painter.setBrush(QtGui.QColor(0,0,255)) # blue fill
                 painter.drawEllipse(
-                  QtCore.QPoint(location[0],location[1]), 6, 6)
+                  QtCore.QPoint(location[0],location[1]),
+                  markerRadius, markerRadius)
 
                 painter.setPen(QtGui.QColor(0,0,255))
+                distanceFromMarker = markerRadius + 3
+                pointerLength = 8
+                xDistance = distanceFromMarker*math.sin(
+                  math.radians(thetaDisplay+90.0))
+                yDistance = distanceFromMarker*math.cos(
+                  math.radians(thetaDisplay+90.0))
+                xLength = (xDistance + pointerLength*math.sin(
+                  math.radians(thetaDisplay+90.0)))
+                yLength = (yDistance + pointerLength*math.cos(
+                  math.radians(thetaDisplay+90.0)))
+                pointer = QtCore.QLineF(xDistance+location[0],
+                                        yDistance+location[1],
+                                        xLength+location[0],
+                                        yLength+location[1])
+                painter.drawLine(pointer)
 
             painter.end()
 
@@ -568,6 +628,11 @@ class RobotBox(QtGui.QMainWindow):
         if (self.statusBar().currentMessage() == "" or 
                 "Charge" in self.statusBar().currentMessage()):
             self.statusBar().showMessage("Charge: " + D.chargeLevel)
+
+    # parameter changes
+    @Slot()
+    def density_change(self):
+        D.pointDensity = self.densitySlider.value()
 
     # light threshold setters
     @Slot()
