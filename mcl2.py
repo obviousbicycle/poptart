@@ -12,8 +12,6 @@ import irobot_mudd
 from std_msgs.msg import String
 from irobot_mudd.srv import *
 from irobot_mudd.msg import *
-import time
-import math
 
 # We need to use resource locking to handle synchronization between GUI thread
 # and ROS topic callbacks
@@ -21,35 +19,46 @@ from threading import Lock
 
 # The GUI libraries
 from PySide import QtCore, QtGui
-from PySide.QtCore import Slot
+from PySide.QtCore import Signal, Slot
 import cv2
+
+# General mathy stuff
 import numpy as np
 import random
+import time
+import math
 
 
 # Some Constants
 GUI_UPDATE_PERIOD = 20 # ms
-USE_CM = 1 # set to 0 to use meters in position data
-WIDGET_SPACING = 10 # pixels of space between widgets
+USE_CM = 1 # set to 1 to use cm as main distance unit
 SCALE = 1.0 # how many distance units for one pixel?
+WIDGET_SPACING = 10 # pixels of space between widgets
 
 
 class Data: pass    # empty class for a generic data holder
 D = Data()  # an object to hold our system's services and state
 
 # visual-related globals
+# image dimensions
+D.width = 300
+D.height = 300
 # for image loading
-D.loadedImage = QtGui.QImage()
+D.imagePath = ""
 # toggle various things for display purposes
 D.showRobot = True
 D.makeTrail = 0
 D.makeMCL = 0
-# dependent on image size
-D.minDensity = 1.0/90000
+# robot marker offset
+D.xOffset = 0
+D.yOffset = 0
+D.thetaOffset = 0
 
 # location-related globals
 # list of points where robot was during a GUI update
 D.trail = []
+# list of white points on image representing white lines on floor
+D.lines = []
 # holds MCL particles and respective probabilities
 D.particles = []
 D.probabilities = []
@@ -58,7 +67,7 @@ D.recentMove = False
 
 # odometry- and sensor-related globals
 # for various data
-# in meters/degrees
+# in (centi)meters/degrees
 D.x = 0.0
 D.y = 0.0
 D.theta = 0.0
@@ -67,33 +76,28 @@ D.xDiff = 0.0
 D.yDiff = 0.0
 D.thetaDiff = 0.0
 # IR light sensor data
-D.backLeftSensor = 0
-D.frontLeftSensor = 0
-D.frontRightSensor = 0
-D.backRightSensor = 0
+D.sensors = [0]*4
 # user-input thresholds
 # feel free to change these default values to whatever you need
-D.backLeftThreshold = 800
-D.frontLeftThreshold = 700
-D.frontRightThreshold = 1000
-D.backRightThreshold = 1000
+D.thresholds = [400,400,400,400]
 # just because
 D.chargeLevel = ""
 
 # parameters changeable via slider
-D.pointDensity = 0.01
-D.noiseXY = 4.0
-D.noiseTheta = 2.5
+D.xyNoise = 4.0
+D.thetaNoise = 2.5
 
 
+# The whole GUI is in this class
 class RobotBox(QtGui.QMainWindow):
     def __init__(self):
         # Construct the parent class
         super(RobotBox, self).__init__()
 
+        # init each section of the main window
         self.init_central()
+        self.init_menu()
         self.init_left()
-        self.init_bottom()
         self.init_right()
 
     def init_central(self):
@@ -120,132 +124,106 @@ class RobotBox(QtGui.QMainWindow):
         self.redrawTimer.timeout.connect(self.redraw_callback)
         self.redrawTimer.start(GUI_UPDATE_PERIOD)
 
-    def init_left(self):
-        """Left Dock Widgets: positionGroup, actionGroup
-        positionGroup displays position data from sensorPacket
-        actionGroup shows image actions
-        """
-        leftBox = QtGui.QWidget(self)
-        leftLayout = QtGui.QGridLayout()
-        leftBox.setLayout(leftLayout)
+    def init_menu(self):
+        """ Sets up main window's menu bar """
+        # image actions
+        self.saveAction = QtGui.QAction("&Save image", self)
+        self.saveAction.setShortcut(QtGui.QKeySequence("Ctrl+S"))
+        self.saveAction.triggered.connect(self.save_image)
+        self.openAction = QtGui.QAction("&Open map", self)
+        self.openAction.triggered.connect(self.open_image)
+        self.openAction.setShortcut(QtGui.QKeySequence("Ctrl+O"))
+        self.clearAction = QtGui.QAction("Clear image && map", self)
+        self.clearAction.triggered.connect(self.clear_image)
 
+        self.fileMenu = self.menuBar().addMenu("Stuff")
+        self.fileMenu.addAction(self.saveAction)
+        self.fileMenu.addAction(self.openAction)
+        self.fileMenu.addAction(self.clearAction)
+
+    def init_left(self):
+        """ Left Dock Widgets: positionGroup, lightGroup
+        positionGroup displays position data from sensorPacket
+        lightGroup displays IR light sensor data from sensorPacket
+        """
+        leftTabs = QtGui.QTabWidget(self)
+
+        ###
         # positionGroup
-        positionGroup = QtGui.QGroupBox("Position data")
-        positionGroup.setAlignment(QtCore.Qt.AlignHCenter)
-        # Position info + reset buttons
-        # x data
+        ###
+        positionGroup = QtGui.QWidget(self)
+
+        # x display
         xLabel = QtGui.QLabel(self)
         xLabel.setText("x (" + USE_CM*"c" + "m): ")
         self.xValue = QtGui.QLabel(self)
         self.xValue.setText("")
         xResetButton = QtGui.QPushButton("Reset", self)
         xResetButton.clicked.connect(self.x_reset)
-        # y data
+
+        # y display
         yLabel = QtGui.QLabel(self)
         yLabel.setText("y (" + USE_CM*"c" + "m): ")
         self.yValue = QtGui.QLabel(self)
         self.yValue.setText("")
         yResetButton = QtGui.QPushButton("Reset", self)
         yResetButton.clicked.connect(self.y_reset)
-        # theta data
+
+        # theta display
         thetaLabel = QtGui.QLabel(self)
         thetaLabel.setText("theta (deg): ")
         self.thetaValue = QtGui.QLabel(self)
         self.thetaValue.setText("")
         thetaResetButton = QtGui.QPushButton("Reset", self)
         thetaResetButton.clicked.connect(self.theta_reset)
+
         # reset all button
         allResetButton = QtGui.QPushButton("Reset all", self)
         allResetButton.clicked.connect(self.all_reset)
+
         # Assembling layout for positionGroup
         positionLayout = QtGui.QGridLayout()
         positionGroup.setLayout(positionLayout)
-        positionLayout.setRowStretch(0, 1)
-        # x
         positionLayout.addWidget(xLabel, 1, 0, QtCore.Qt.AlignRight)
         positionLayout.addWidget(self.xValue, 1, 1)
         positionLayout.addWidget(xResetButton, 2, 1)
-        positionLayout.setRowMinimumHeight(3, WIDGET_SPACING)
-        # y
         positionLayout.addWidget(yLabel, 4, 0, QtCore.Qt.AlignRight)
         positionLayout.addWidget(self.yValue, 4, 1)
         positionLayout.addWidget(yResetButton, 5, 1)
-        positionLayout.setRowMinimumHeight(6, WIDGET_SPACING)
-        # theta
         positionLayout.addWidget(thetaLabel, 7, 0, QtCore.Qt.AlignRight)
         positionLayout.addWidget(self.thetaValue, 7, 1)
         positionLayout.addWidget(thetaResetButton, 8, 1)
-        positionLayout.setRowMinimumHeight(9, 2*WIDGET_SPACING)
-        # reset all
         positionLayout.addWidget(allResetButton, 10, 1)
+        # increase stretch of border rows to keep the widgets close together
+        positionLayout.setRowStretch(0, 1)
         positionLayout.setRowStretch(11, 1)
+        # blank rows/columns for spacing between widgets
+        positionLayout.setRowMinimumHeight(3, WIDGET_SPACING)
+        positionLayout.setRowMinimumHeight(6, WIDGET_SPACING)
+        positionLayout.setRowMinimumHeight(9, 2*WIDGET_SPACING)
 
-        # actionGroup
-        actionGroup = QtGui.QGroupBox("Image actions")
-        actionGroup.setAlignment(QtCore.Qt.AlignHCenter)
-        # Image action buttons
-        # save
-        self.saveButton = QtGui.QPushButton("&Save image", self)
-        self.saveButton.clicked.connect(self.save_image)
-        # load
-        self.loadButton = QtGui.QPushButton("&Load map", self)
-        self.loadButton.clicked.connect(self.load_image)
-        # clear
-        self.clearButton = QtGui.QPushButton("Clear image && map", self)
-        self.clearButton.clicked.connect(self.clear_image)
-        # Assembling layout for actionGroup
-        actionLayout = QtGui.QGridLayout()
-        actionGroup.setLayout(actionLayout)
-        actionLayout.setRowStretch(0, 1)
-        # save
-        actionLayout.addWidget(self.saveButton, 1, 0, QtCore.Qt.AlignHCenter)
-        # load
-        actionLayout.addWidget(self.loadButton, 2, 0, QtCore.Qt.AlignHCenter)
-        # clear
-        actionLayout.addWidget(self.clearButton, 3, 0, QtCore.Qt.AlignHCenter)
-        actionLayout.setRowStretch(4, 1)
-
-        # Assembling top-level layout
-        leftLayout.setRowStretch(0, 1)
-        leftLayout.addWidget(positionGroup, 1, 0)
-        leftLayout.addWidget(actionGroup, 2, 0)
-        leftLayout.setRowStretch(3, 1)
-        # Assembling dock
-        leftDock = QtGui.QDockWidget("", self)
-        leftDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
-        leftDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        leftDock.setTitleBarWidget(QtGui.QWidget(self))
-        leftDock.setWidget(leftBox)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, leftDock)
-
-    def init_bottom(self):
-        """Bottom Dock Widget: lightBox
-        Displays IR light sensor data from sensorPacket
-        """
-        # lightBox is just a generic widget holding a grid layout
-        lightBox = QtGui.QWidget(self)
-
+        ###
+        # lightGroup
+        ###
+        lightGroup = QtGui.QWidget(self)
         readingsLabel = QtGui.QLabel(self)
         readingsLabel.setText("Readings")
         thresholdsLabel = QtGui.QLabel(self)
         thresholdsLabel.setText("Thresholds")
 
-        # Light sensor info
+        # Display values
         backLeftLabel = QtGui.QLabel(self)
         backLeftLabel.setText("Back left")
         self.backLeftValue = QtGui.QLabel(self)
         self.backLeftValue.setText("")
-
         frontLeftLabel = QtGui.QLabel(self)
         frontLeftLabel.setText("Front left")
         self.frontLeftValue = QtGui.QLabel(self)
         self.frontLeftValue.setText("")
-
         frontRightLabel = QtGui.QLabel(self)
         frontRightLabel.setText("Front right")
         self.frontRightValue = QtGui.QLabel(self)
         self.frontRightValue.setText("")
-
         backRightLabel = QtGui.QLabel(self)
         backRightLabel.setText("Back right")
         self.backRightValue = QtGui.QLabel(self)
@@ -253,185 +231,295 @@ class RobotBox(QtGui.QMainWindow):
 
         # Light threshold entry
         validator = QtGui.QIntValidator(0, 9999, self)
-
-        self.backLeftField = QtGui.QLineEdit(str(D.backLeftThreshold))
+        self.backLeftField = QtGui.QLineEdit(str(D.thresholds[0]))
         self.backLeftField.editingFinished.connect(self.back_left_set)
         self.backLeftField.setValidator(validator)
-
-        self.frontLeftField = QtGui.QLineEdit(str(D.frontLeftThreshold))
+        self.frontLeftField = QtGui.QLineEdit(str(D.thresholds[1]))
         self.frontLeftField.editingFinished.connect(self.front_left_set)
         self.frontLeftField.setValidator(validator)
-
-        self.frontRightField = QtGui.QLineEdit(str(D.frontRightThreshold))
+        self.frontRightField = QtGui.QLineEdit(str(D.thresholds[2]))
         self.frontRightField.editingFinished.connect(self.front_right_set)
         self.frontRightField.setValidator(validator)
-
-        self.backRightField = QtGui.QLineEdit(str(D.backRightThreshold))
+        self.backRightField = QtGui.QLineEdit(str(D.thresholds[3]))
         self.backRightField.editingFinished.connect(self.back_right_set)
         self.backRightField.setValidator(validator)
 
-        # Putting together layout and dock widget
+        # Assembling layout for lightGroup
         lightLayout = QtGui.QGridLayout()
-        lightBox.setLayout(lightLayout)
-
-        lightLayout.setRowMinimumHeight(0, WIDGET_SPACING)
-        lightLayout.setColumnStretch(0, 1)
-        lightLayout.addWidget(readingsLabel, 2, 1, QtCore.Qt.AlignRight)
-        lightLayout.addWidget(thresholdsLabel, 3, 1, QtCore.Qt.AlignRight)
-        lightLayout.setColumnMinimumWidth(2, WIDGET_SPACING)
-        
-        lightLayout.addWidget(backLeftLabel, 1, 3, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.backLeftValue, 2, 3,
+        lightGroup.setLayout(lightLayout)
+        lightLayout.addWidget(readingsLabel, 1, 2, QtCore.Qt.AlignRight)
+        lightLayout.addWidget(thresholdsLabel, 1, 3, QtCore.Qt.AlignRight)
+        lightLayout.addWidget(backLeftLabel, 3, 1, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.backLeftValue, 3, 2,
                               QtCore.Qt.AlignHCenter)
         lightLayout.addWidget(self.backLeftField, 3, 3,
                               QtCore.Qt.AlignHCenter)
-        lightLayout.setColumnMinimumWidth(4, WIDGET_SPACING)
-        
-        lightLayout.addWidget(frontLeftLabel, 1, 5, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.frontLeftValue, 2, 5,
+        lightLayout.addWidget(frontLeftLabel, 5, 1, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.frontLeftValue, 5, 2,
                               QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.frontLeftField, 3, 5,
+        lightLayout.addWidget(self.frontLeftField, 5, 3,
                               QtCore.Qt.AlignHCenter)
-        lightLayout.setColumnMinimumWidth(6, WIDGET_SPACING)
-        
-        lightLayout.addWidget(frontRightLabel, 1, 7, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.frontRightValue, 2, 7,
+        lightLayout.addWidget(frontRightLabel, 7, 1, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.frontRightValue, 7, 2,
                               QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.frontRightField, 3, 7,
+        lightLayout.addWidget(self.frontRightField, 7, 3,
                               QtCore.Qt.AlignHCenter)
-        lightLayout.setColumnMinimumWidth(8, WIDGET_SPACING)
-        
-        lightLayout.addWidget(backRightLabel, 1, 9, QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.backRightValue, 2, 9,
+        lightLayout.addWidget(backRightLabel, 9, 1, QtCore.Qt.AlignHCenter)
+        lightLayout.addWidget(self.backRightValue, 9, 2,
                               QtCore.Qt.AlignHCenter)
-        lightLayout.addWidget(self.backRightField, 3, 9,
+        lightLayout.addWidget(self.backRightField, 9, 3,
                               QtCore.Qt.AlignHCenter)
+        # border stretch
+        lightLayout.setRowStretch(0, 1)
+        lightLayout.setRowStretch(10, 1)
+        lightLayout.setColumnStretch(4, 1)
+        # spacing columns/rows
+        lightLayout.setColumnMinimumWidth(0, WIDGET_SPACING)
+        lightLayout.setRowMinimumHeight(2, WIDGET_SPACING)
+        lightLayout.setRowMinimumHeight(4, WIDGET_SPACING)
+        lightLayout.setRowMinimumHeight(6, WIDGET_SPACING) 
+        lightLayout.setRowMinimumHeight(8, WIDGET_SPACING)
 
-        lightLayout.setColumnStretch(10, 1)
-        lightLayout.setRowStretch(4, 1)
-
-        lightTitle = QtGui.QLabel(self)
-        lightTitle.setText("Light sensors")
-        lightTitle.setAlignment(QtCore.Qt.AlignHCenter)
-
-        lightDock = QtGui.QDockWidget("", self)
-        lightDock.setAllowedAreas(QtCore.Qt.BottomDockWidgetArea)
-        lightDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        lightDock.setTitleBarWidget(lightTitle)
-        lightDock.setWidget(lightBox)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, lightDock)
+        ###
+        # Top-level
+        ###
+        leftTabs.addTab(positionGroup, "Position")
+        leftTabs.addTab(lightGroup, "IR sensors")
+        # Assembling dock
+        leftDock = QtGui.QDockWidget("", self)
+        leftDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
+        leftDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        leftDock.setTitleBarWidget(QtGui.QWidget(self))
+        leftDock.setWidget(leftTabs)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, leftDock)
 
     def init_right(self):
-        """Right Dock Widget: displayGroup, parameterGroup
+        """ Right Dock Widget: displayGroup, parameterGroup, actionGroup
         displayGroup changes settings and stuff
         parameterGroup changes parameters and stuff
+        actionGroup has image actions
         """
-        rightBox = QtGui.QWidget(self)
-        rightLayout = QtGui.QGridLayout()
-        rightBox.setLayout(rightLayout)
+        rightTabs = QtGui.QTabWidget(self)
 
+        ###
         # displayGroup
-        displayGroup = QtGui.QGroupBox("Display settings")
-        displayGroup.setAlignment(QtCore.Qt.AlignHCenter)
+        ###
+        displayGroup = QtGui.QWidget(self)
+
         # Robot marker
         robotLabel = QtGui.QLabel(self)
         robotLabel.setText("Robot marker")
-        markerGroup = QtGui.QButtonGroup(self)
         self.showRobotButton = QtGui.QRadioButton("Show", self)
         self.showRobotButton.clicked.connect(self.show_robot)
-        markerGroup.addButton(self.showRobotButton)
         self.hideRobotButton = QtGui.QRadioButton("Hide", self)
         self.hideRobotButton.clicked.connect(self.hide_robot)
+        # limit radio button choices to marker-related buttons
+        markerGroup = QtGui.QButtonGroup(self)
+        markerGroup.addButton(self.showRobotButton)
         markerGroup.addButton(self.hideRobotButton)
+
         # Trails
         trailLabel = QtGui.QLabel(self)
         trailLabel.setText("Robot trail")
-        trailGroup = QtGui.QButtonGroup(self)
         self.showTrailButton = QtGui.QRadioButton("Show", self)
         self.showTrailButton.clicked.connect(self.show_trail)
-        trailGroup.addButton(self.showTrailButton)
         self.hideTrailButton = QtGui.QRadioButton("Hide", self)
         self.hideTrailButton.clicked.connect(self.hide_trail)
-        trailGroup.addButton(self.hideTrailButton)
         self.noTrailButton = QtGui.QRadioButton("Off", self)
         self.noTrailButton.clicked.connect(self.no_trail)
-        trailGroup.addButton(self.noTrailButton)
         self.eraseTrailButton = QtGui.QPushButton("Erase", self)
         self.eraseTrailButton.clicked.connect(self.erase_trail)
+        # limit radio button choices to trail-related buttons
+        trailGroup = QtGui.QButtonGroup(self)
+        trailGroup.addButton(self.showTrailButton)
+        trailGroup.addButton(self.hideTrailButton)
+        trailGroup.addButton(self.noTrailButton)
+
         # MCL
         MCLLabel = QtGui.QLabel(self)
         MCLLabel.setText("Monte Carlo")
-        MCLGroup = QtGui.QButtonGroup(self)
         self.showMCLButton = QtGui.QRadioButton("Show", self)
         self.showMCLButton.clicked.connect(self.show_mcl)
-        MCLGroup.addButton(self.showMCLButton)
         self.hide_mclButton = QtGui.QRadioButton("Hide", self)
         self.hide_mclButton.clicked.connect(self.hide_mcl)
-        MCLGroup.addButton(self.hide_mclButton)
         self.noMCLButton = QtGui.QRadioButton("Off", self)
         self.noMCLButton.clicked.connect(self.no_mcl)
-        MCLGroup.addButton(self.noMCLButton)
         self.erase_mclButton = QtGui.QPushButton("Erase", self)
         self.erase_mclButton.clicked.connect(self.erase_mcl)
+        # limit radio button choices to MCL-related buttons
+        MCLGroup = QtGui.QButtonGroup(self)
+        MCLGroup.addButton(self.showMCLButton)
+        MCLGroup.addButton(self.hide_mclButton)
+        MCLGroup.addButton(self.noMCLButton)
+
         # Assembling layout for displayGroup
         displayLayout = QtGui.QGridLayout()
         displayGroup.setLayout(displayLayout)
-        displayLayout.setColumnStretch(0, 1)
-        displayLayout.setColumnMinimumWidth(2, WIDGET_SPACING)
-        displayLayout.setColumnMinimumWidth(4, WIDGET_SPACING)
-        displayLayout.setColumnStretch(6, 1)
-        # first section: marker
-        displayLayout.setRowStretch(0, 1)
         displayLayout.addWidget(robotLabel, 1, 1)
         displayLayout.addWidget(self.showRobotButton, 2, 1)
         displayLayout.addWidget(self.hideRobotButton, 2, 3)
         displayLayout.addWidget(QtGui.QWidget(self), 2, 5)
-        displayLayout.setRowMinimumHeight(3, WIDGET_SPACING)
-        # second section: trail
         displayLayout.addWidget(trailLabel, 4, 1)
         displayLayout.addWidget(self.showTrailButton, 5, 1)
         displayLayout.addWidget(self.hideTrailButton, 5, 2)
         displayLayout.addWidget(self.noTrailButton, 5, 3)
         displayLayout.addWidget(self.eraseTrailButton, 6, 2)
-        displayLayout.setRowMinimumHeight(7, WIDGET_SPACING)
-        # third section: mcl
         displayLayout.addWidget(MCLLabel, 8, 1)
         displayLayout.addWidget(self.showMCLButton, 9, 1)
         displayLayout.addWidget(self.hide_mclButton, 9, 2)
         displayLayout.addWidget(self.noMCLButton, 9, 3)
         displayLayout.addWidget(self.erase_mclButton, 10, 2)
+        # border stretch
+        displayLayout.setColumnStretch(0, 1)
+        displayLayout.setColumnStretch(6, 1)
+        displayLayout.setRowStretch(0, 1)
         displayLayout.setRowStretch(11, 1)
 
-        # parameterGroup
-        parameterGroup = QtGui.QGroupBox("Parameters")
-        parameterGroup.setAlignment(QtCore.Qt.AlignHCenter)
-        # mcl point density
-        self.densitySlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.densitySlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.densitySlider.setMinimum(D.minDensity)
-        self.densitySlider.setMaximum(1.0)
-        self.densitySlider.setTickInterval(0.001)
-        self.densitySlider.setValue(D.pointDensity)
-        self.densitySlider.valueChanged.connect(self.density_change)
-        # Assembling layout for parameterGroup
-        parameterLayout = QtGui.QGridLayout()
-        parameterGroup.setLayout(parameterLayout)
-        parameterLayout.setRowStretch(0, 1)
-        parameterLayout.addWidget(self.densitySlider, 1, 0)
-        parameterLayout.setRowStretch(20, 1)
+        ###
+        # offsetGroup
+        ###
 
-        # assembling top-level layout
-        rightLayout.setRowStretch(0, 1)
-        rightLayout.addWidget(displayGroup, 1, 0)
-        rightLayout.setRowStretch(2, 1)
-        rightLayout.addWidget(parameterGroup, 3, 0)
-        rightLayout.setRowStretch(4, 1)
+        # offsetGroup for moving robot marker around
+        offsetGroup = QtGui.QWidget(self)
+
+        # x
+        xOffsetLabel = QtGui.QLabel(self)
+        xOffsetLabel.setText("X")
+        # x input field
+        self.xOffsetField = QtGui.QLineEdit(str(D.xOffset))
+        self.xOffsetField.editingFinished.connect(self.x_offset_set)
+        xOffsetValidator = QtGui.QIntValidator(-D.width/2, D.width/2, self)
+        self.xOffsetField.setValidator(xOffsetValidator)
+        # x slider
+        self.xOffsetSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.xOffsetSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.xOffsetSlider.setMinimum(-D.width/2)
+        self.xOffsetSlider.setMaximum(D.width/2)
+        self.xOffsetSlider.setTickInterval(D.width/20)
+        self.xOffsetSlider.setValue(0)
+        self.xOffsetSlider.valueChanged.connect(self.x_offset_change)
+
+        # y
+        yOffsetLabel = QtGui.QLabel(self)
+        yOffsetLabel.setText("Y")
+        # y input field
+        self.yOffsetField = QtGui.QLineEdit(str(D.yOffset))
+        self.yOffsetField.editingFinished.connect(self.y_offset_set)
+        yOffsetValidator = QtGui.QIntValidator(-D.height/2, D.height/2, self)
+        self.yOffsetField.setValidator(yOffsetValidator)
+        # y slider
+        self.yOffsetSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.yOffsetSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.yOffsetSlider.setMinimum(-D.height/2)
+        self.yOffsetSlider.setMaximum(D.height/2)
+        self.yOffsetSlider.setTickInterval(D.height/20)
+        self.yOffsetSlider.setValue(0)
+        self.yOffsetSlider.valueChanged.connect(self.y_offset_change)
+
+        # theta
+        thetaOffsetLabel = QtGui.QLabel(self)
+        thetaOffsetLabel.setText("Theta")
+        # theta input field
+        self.thetaOffsetField = QtGui.QLineEdit(str(D.thetaOffset))
+        self.thetaOffsetField.editingFinished.connect(self.theta_offset_set)
+        thetaOffsetValidator = QtGui.QIntValidator(0, 359, self)
+        self.thetaOffsetField.setValidator(thetaOffsetValidator)
+        # theta slider
+        self.thetaOffsetSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.thetaOffsetSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.thetaOffsetSlider.setMinimum(0)
+        self.thetaOffsetSlider.setMaximum(359)
+        self.thetaOffsetSlider.setTickInterval(15)
+        self.thetaOffsetSlider.setValue(0)
+        self.thetaOffsetSlider.valueChanged.connect(self.theta_offset_change)
+
+        # offsetGroup layout
+        offsetLayout = QtGui.QGridLayout()
+        offsetGroup.setLayout(offsetLayout)
+        offsetLayout.addWidget(xOffsetLabel, 3, 0)
+        offsetLayout.addWidget(self.xOffsetField, 4, 0)
+        offsetLayout.addWidget(self.xOffsetSlider, 4, 1)
+        offsetLayout.addWidget(yOffsetLabel, 5, 0)
+        offsetLayout.addWidget(self.yOffsetField, 6, 0)
+        offsetLayout.addWidget(self.yOffsetSlider, 6, 1)
+        offsetLayout.addWidget(thetaOffsetLabel, 7, 0)
+        offsetLayout.addWidget(self.thetaOffsetField, 8, 0)
+        offsetLayout.addWidget(self.thetaOffsetSlider, 8, 1)
+        # border stretch
+        offsetLayout.setRowStretch(0, 1)
+        offsetLayout.setRowStretch(20, 1)
+        
+        ###
+        # mclGroup
+        ###
+        mclGroup = QtGui.QWidget(self)
+
+        # xy noise
+        # apparently sliders only accept integer values??
+        xyNoiseLabel = QtGui.QLabel(self)
+        xyNoiseLabel.setText("XY noise")
+        # xy input field
+        self.xyNoiseField = QtGui.QLineEdit(str(D.xyNoise))
+        self.xyNoiseField.editingFinished.connect(self.xy_noise_set)
+        xyNoiseMax = 10.0
+        xyNoiseValidator = QtGui.QDoubleValidator(0.0, xyNoiseMax, 1, self)
+        self.xyNoiseField.setValidator(xyNoiseValidator)
+        self.xyNoiseField.setMaxLength(len(str(xyNoiseMax)))
+        # xy slider
+        self.xyNoiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.xyNoiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.xyNoiseSlider.setMinimum(0)
+        self.xyNoiseSlider.setMaximum(10*xyNoiseMax)
+        self.xyNoiseSlider.setTickInterval(5)
+        self.xyNoiseSlider.setValue(D.xyNoise)
+        self.xyNoiseSlider.valueChanged.connect(self.xy_noise_change)
+
+        # theta noise
+        thetaNoiseLabel = QtGui.QLabel(self)
+        thetaNoiseLabel.setText("Theta noise")
+        # theta input field
+        self.thetaNoiseField = QtGui.QLineEdit(str(D.thetaNoise))
+        self.thetaNoiseField.editingFinished.connect(self.theta_noise_set)
+        thetaNoiseMax = 5.0
+        thetaNoiseValidator = QtGui.QDoubleValidator(
+          0.0, thetaNoiseMax, 1, self)
+        self.thetaNoiseField.setValidator(thetaNoiseValidator)
+        self.thetaNoiseField.setMaxLength(len(str(thetaNoiseMax)))
+        # theta slider
+        self.thetaNoiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.thetaNoiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.thetaNoiseSlider.setMinimum(0)
+        self.thetaNoiseSlider.setMaximum(10*thetaNoiseMax)
+        self.thetaNoiseSlider.setTickInterval(5)
+        self.thetaNoiseSlider.setSingleStep(5)
+        self.thetaNoiseSlider.setValue(D.thetaNoise)
+        self.thetaNoiseSlider.valueChanged.connect(self.theta_noise_change)
+
+        # noiseGroup layout
+        mclLayout = QtGui.QGridLayout()
+        mclGroup.setLayout(mclLayout)
+        mclLayout.addWidget(xyNoiseLabel, 3, 0)
+        mclLayout.addWidget(self.xyNoiseField, 4, 0)
+        mclLayout.addWidget(self.xyNoiseSlider, 4, 1)
+        mclLayout.addWidget(thetaNoiseLabel, 5, 0)
+        mclLayout.addWidget(self.thetaNoiseField, 6, 0)
+        mclLayout.addWidget(self.thetaNoiseSlider, 6, 1)
+        # border stretch
+        mclLayout.setRowStretch(0, 1)
+        mclLayout.setRowStretch(20, 1)
+
+        ###
+        # Top-level
+        ###
+        rightTabs.addTab(displayGroup, "Draw")
+        rightTabs.addTab(offsetGroup, "Offset")
+        rightTabs.addTab(mclGroup, "MCL")
         # assembling dock
         rightDock = QtGui.QDockWidget("", self)
         rightDock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea)
         rightDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
         rightDock.setTitleBarWidget(QtGui.QWidget(self))
-        rightDock.setWidget(rightBox)
+        rightDock.setWidget(rightTabs)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, rightDock)
 
         # robot marker is shown and trail is not calculated upon start
@@ -448,50 +536,65 @@ class RobotBox(QtGui.QMainWindow):
         try:
             # updating infoBox values
             # if USE_CM = 1, values are converted here
-            xDisplay = round(100.0**USE_CM * (D.x-D.xDiff), 2)
-            yDisplay = round(100.0**USE_CM * (D.y-D.yDiff), 2)
+            xDisplay = round(100.0**USE_CM * (D.x-D.xDiff), 2)+D.xOffset
+            yDisplay = round(100.0**USE_CM * (D.y-D.yDiff), 2)+D.yOffset
             self.xValue.setText(str(xDisplay))
             self.yValue.setText(str(yDisplay))
             # convert theta to degrees and set bounds
-            thetaDisplay = int(round(math.degrees(D.theta - D.thetaDiff)))
+            thetaDisplay = (int(round(math.degrees(D.theta - D.thetaDiff)))+
+                            D.thetaOffset)
             while thetaDisplay > 360: thetaDisplay -= 360
             while thetaDisplay < 0: thetaDisplay += 360
             self.thetaValue.setText(str(thetaDisplay))
+
             # updating lightBox values
-            self.backLeftValue.setText(str(D.backLeftSensor))
-            self.frontLeftValue.setText(str(D.frontLeftSensor))
-            self.frontRightValue.setText(str(D.frontRightSensor))
-            self.backRightValue.setText(str(D.backRightSensor))
+            self.backLeftValue.setText(str(D.sensors[0]))
+            self.frontLeftValue.setText(str(D.sensors[1]))
+            self.frontRightValue.setText(str(D.sensors[2]))
+            self.backRightValue.setText(str(D.sensors[3]))
 
             # updating imageBox
             # right now, it just redraws the entire image every time
             # the GUI is updated...
-            if D.loadedImage.isNull():
-                # Default image is just a white square
-                WIDTH = 300
-                HEIGHT = 300
+            if not D.imagePath:
+                # Default image is just a black square
+                D.width = 300
+                D.height = 300
                 blank = QtGui.QPixmap.fromImage(
-                    QtGui.QImage(WIDTH, HEIGHT, QtGui.QImage.Format_RGB888))
-                blank.fill(QtGui.QColor(255,255,255))
+                    QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888))
+                blank.fill(QtGui.QColor(0,0,0))
                 image = blank
             else:
-                WIDTH = D.loadedImage.width()
-                HEIGHT = D.loadedImage.height()
-                image = QtGui.QPixmap.fromImage(D.loadedImage)
-            area = WIDTH*HEIGHT
-            origin = [WIDTH/2, HEIGHT/2]
+                image = QtGui.QImage()
+                image.load(D.imagePath)
+                D.width = image.width()
+                D.height = image.height()
+                # add white pixels to D.lines
+                for x in range(D.width):
+                    for y in range(D.height):
+                        if (QtGui.QColor(image.pixel(x,y)) ==
+                                QtGui.QColor("white")):
+                            D.lines.append((x,y))
+                image = QtGui.QPixmap.fromImage(image)
+            area = D.width*D.height
+            origin = (D.width/2, D.height/2)
             # most graphics dealios consider top-left corner to be the
             # origin, so we need to adjust for that
             location = (origin[0] + SCALE*xDisplay,
                         origin[1] - SCALE*yDisplay,
                         D.theta)
 
-            # drawing time
-            painter = QtGui.QPainter()
-            painter.begin(image)
-            # drawing MCL particles
+            # updating locations to D.trail
+            if D.makeTrail:
+                if not D.trail or location != D.trail[-1]:
+                    D.trail.append(location)
+                    D.recentMove = True
+                else:
+                    D.recentMove = False
+
+            # calculating MCL particles
             # hold on to yer britches son cause this is one wild ride
-            if D.makeTrail and D.makeMCL:
+            if D.makeMCL: # hopefully, if D.makeMCL then D.maketrail
                 numPoints = int(area*D.pointDensity)
                 if not D.particles:
                     # initially, every point has an equal probability
@@ -499,16 +602,16 @@ class RobotBox(QtGui.QMainWindow):
                     D.probabilities = [1.0/numPoints]*numPoints
                     # generate points with random x, y, theta
                     for n in range(numPoints):
-                        p = [random.randint(0, WIDTH-1),
-                             random.randint(0, HEIGHT-1),
+                        p = [random.randint(0, D.width-1),
+                             random.randint(0, D.height-1),
                              random.randint(0,360)]
                         D.particles.append(p)
-                elif len(D.trail) > 1:
+                elif len(D.trail) >= 2:
                     # from the most recent motion data, calculate how
                     # far the particles must move
-                    difference = [D.trail[-1][0]-D.trail[-2][0],
+                    difference = (D.trail[-1][0]-D.trail[-2][0],
                                   D.trail[-1][1]-D.trail[-2][1],
-                                  D.trail[-1][2]-D.trail[-2][2]]
+                                  D.trail[-1][2]-D.trail[-2][2])
                     if D.recentMove:
                         move = math.hypot(difference[0], difference[1])
                         oldGen = D.particles
@@ -521,12 +624,25 @@ class RobotBox(QtGui.QMainWindow):
                             oldPt[0] += move*math.sin(math.radians(oldPt[2]))
                             oldPt[1] += move*math.cos(math.radians(oldPt[2]))
                             # particles that move off-screen are killed
-                            if (oldPt[0] < 0 or oldPt[0] > WIDTH or
-                                oldPt[1] < 0 or oldPt[1] > HEIGHT):
+                            if (oldPt[0] < 0 or oldPt[0] > D.width or
+                                oldPt[1] < 0 or oldPt[1] > D.height):
                                 # killed particles unlikely to
                                 # represent actual location, so we
                                 # set their prob very low
-                                oldProbs[index] = 0.0001
+                                oldProbs[index] = 0.000001
+                            # if IR readings exceed threshold, set
+                            # probabilities corresponding to distance
+                            # from image's white points
+                            if (D.lines and 
+                                    (D.sensors[0] >= D.thresholds[0] or
+                                     D.sensors[1] >= D.thresholds[1] or
+                                     D.sensors[2] >= D.thresholds[2] or
+                                     D.sensors[3] >= D.thresholds[3])):
+                                toLine = [
+                                    math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
+                                    for p in D.lines
+                                    ]
+                                oldProbs[index] *= 1/(1+min(toLine))
                             index += 1
                         # begin populating new generation with copies
                         # from old generation, based on the points'
@@ -546,57 +662,68 @@ class RobotBox(QtGui.QMainWindow):
                                 counter += 1
                         # add some noise to each new point
                         D.particles = map(lambda p: [
-                                            random.gauss(p[0],D.noiseXY),
-                                            random.gauss(p[1],D.noiseXY),
-                                            random.gauss(p[2],D.noiseTheta)
+                                            random.gauss(p[0],D.xyNoise),
+                                            random.gauss(p[1],D.xyNoise),
+                                            random.gauss(p[2],D.thetaNoise)
                                             ],
                                           newGen)
                         D.probabilities = newProbs
-                # draw the particles now, if we want
-                if D.makeMCL == 2:
-                    pointRadius = 2
-                    #mostRed = max(D.probabilities)
-                    #mostPurple = min(D.probabilities)
-                    index = 0
-                    for p in D.probabilities:
-                        #if mostRed == mostPurple:
-                        #    hue = 150
-                        #else:
-                        #    hue = 300 * (p-mostPurple)/(mostRed-mostPurple)
-                        color = QtGui.QColor.fromHsv(150,255,255)
-                        painter.setPen(color)
-                        painter.setBrush(color)
-                        painter.drawEllipse(
-                          QtCore.QPoint(
-                            D.particles[index][0], D.particles[index][1]), 
-                            pointRadius, pointRadius)
-                        index += 1
 
+            # drawing time
+            painter = QtGui.QPainter()
+            painter.begin(image)
+            # drawing particles
+            if D.makeMCL == 2:
+                particleRadius = 2
+                distanceFromParticle = particleRadius + 3
+                particlePointerLength = 4
+                #mostRed = max(D.probabilities)
+                #mostPurple = min(D.probabilities)
+                index = 0
+                for p in D.probabilities:
+                    #if mostRed == mostPurple:
+                    #    hue = 150
+                    #else:
+                    #    hue = 300 * (p-mostPurple)/(mostRed-mostPurple)
+                    color = QtGui.QColor.fromHsv(150,255,255)
+                    painter.setPen(color)
+                    painter.setBrush(color)
+                    painter.drawEllipse(
+                      QtCore.QPoint(
+                        D.particles[index][0], D.particles[index][1]), 
+                        particleRadius, particleRadius)
+                    
+                    xDistance = distanceFromParticle*math.sin(
+                      math.radians(D.particles[index][2]))
+                    yDistance = distanceFromParticle*math.cos(
+                      math.radians(D.particles[index][2]))
+                    xLength = xDistance + particlePointerLength*math.sin(
+                      math.radians(D.particles[index][2]))
+                    yLength = yDistance + particlePointerLength*math.cos(
+                      math.radians(D.particles[index][2]))
+                    pointer = QtCore.QLineF(xDistance+D.particles[index][0],
+                                            yDistance+D.particles[index][1],
+                                            xLength+D.particles[index][0],
+                                            yLength+D.particles[index][1])
+                    painter.drawLine(pointer)
+                    index += 1
             # drawing robot trail
-            # dreadfully inefficient as implemented
-            if D.makeTrail:
-                if not D.trail or location != D.trail[-1]:
-                    D.trail.append(location)
-                    D.recentMove = True
-                else:
-                    D.recentMove = False
-                if D.makeTrail == 2 and len(D.trail) > 1:
-                    painter.setPen(QtGui.QColor(255,0,0))
-                    painter.setBrush(QtGui.QColor(255,0,0))
-                    for p in range(1,len(D.trail)):
-                        painter.drawLine(D.trail[p-1][0], D.trail[p-1][1],
-                                         D.trail[p][0], D.trail[p][1])
-
+            if D.makeTrail == 2 and len(D.trail) > 1:
+                painter.setPen(QtGui.QColor(255,0,0))
+                painter.setBrush(QtGui.QColor(255,0,0))
+                for p in range(1,len(D.trail)):
+                    painter.drawLine(D.trail[p-1][0], D.trail[p-1][1],
+                                     D.trail[p][0], D.trail[p][1])
             # drawing robot location and pointer
             if D.showRobot:
                 markerRadius = 6
-                painter.setPen(QtGui.QColor(0,0,0)) # black outline
-                painter.setBrush(QtGui.QColor(0,0,255)) # blue fill
+                painter.setPen(QtGui.QColor("cyan"))
+                painter.setBrush(QtGui.QColor("cyan"))
                 painter.drawEllipse(
                   QtCore.QPoint(location[0],location[1]),
                   markerRadius, markerRadius)
 
-                painter.setPen(QtGui.QColor(0,0,255))
+                painter.setPen(QtGui.QColor("cyan"))
                 distanceFromMarker = markerRadius + 3
                 pointerLength = 8
                 xDistance = distanceFromMarker*math.sin(
@@ -620,40 +747,106 @@ class RobotBox(QtGui.QMainWindow):
 
         # We could do more processing (eg OpenCV) here if we wanted
         # to, but for now let's just display the window.
-        self.resize(image.width(),image.height())
+        self.resize(D.width,D.height)
         self.imageBox.setPixmap(image)
 
         # Status bar displays charge level only when updating previous
         # level or after a temporary message expires
-        if (self.statusBar().currentMessage() == "" or 
+        if (not self.statusBar().currentMessage() or 
                 "Charge" in self.statusBar().currentMessage()):
             self.statusBar().showMessage("Charge: " + D.chargeLevel)
 
     # parameter changes
     @Slot()
-    def density_change(self):
-        D.pointDensity = self.densitySlider.value()
+    def xy_noise_change(self):
+        """ receives valueChanged signal from xyNoiseSlider """
+        D.xyNoise = self.xyNoiseSlider.value()/10.0
+        self.xyNoiseField.setText(str(D.xyNoise))
+
+    @Slot()
+    def xy_noise_set(self):
+        """ receives editingFinished signal from xyNoiseField """
+        D.xyNoise = float(self.xyNoiseField.text())
+        self.xyNoiseSlider.blockSignals(True)
+        self.xyNoiseSlider.setSliderPosition(10*D.xyNoise)
+        self.xyNoiseSlider.blockSignals(False)
+
+    @Slot()
+    def theta_noise_change(self):
+        """ receives valueChanged signal from thetaNoiseSlider """
+        D.thetaNoise = self.thetaNoiseSlider.value()/10.0
+        self.thetaNoiseField.setText(str(D.thetaNoise))
+
+    @Slot()
+    def theta_noise_set(self):
+        """ receives editingFinished signal from thetaNoiseField """
+        D.thetaNoise = float(self.thetaNoiseField.text())
+        self.thetaNoiseSlider.blockSignals(True)
+        self.thetaNoiseSlider.setSliderPosition(10*D.thetaNoise)
+        self.thetaNoiseSlider.blockSignals(False)
+
+    @Slot()
+    def x_offset_change(self):
+        """ receives valueChanged signal from xOffsetSlider """
+        D.xOffset = self.xOffsetSlider.value()
+        self.xOffsetField.setText(str(D.xOffset))
+
+    @Slot()
+    def x_offset_set(self):
+        """ receives editingFinished signal from xOffsetField """
+        D.xOffset = int(self.xOffsetField.text())
+        self.xOffsetSlider.blockSignals(True)
+        self.xOffsetSlider.setSliderPosition(D.xOffset)
+        self.xOffsetSlider.blockSignals(False)
+
+    @Slot()
+    def y_offset_change(self):
+        """ receives valueChanged signal from yOffsetSlider """
+        D.yOffset = self.yOffsetSlider.value()
+        self.yOffsetField.setText(str(D.yOffset))
+
+    @Slot()
+    def y_offset_set(self):
+        """ receives editingFinished signal from yOffsetField """
+        D.yOffset = int(self.yOffsetField.text())
+        self.yOffsetSlider.blockSignals(True)
+        self.yOffsetSlider.setSliderPosition(D.yOffset)
+        self.yOffsetSlider.blockSignals(False)
+
+    @Slot()
+    def theta_offset_change(self):
+        """ receives valueChanged signal from thetaOffsetSlider """
+        D.thetaOffset = self.thetaOffsetSlider.value()
+        self.thetaOffsetField.setText(str(D.thetaOffset))
+
+    @Slot()
+    def theta_offset_set(self):
+        """ receives editingFinished signal from thetaOffsetField """
+        D.thetaOffset = int(self.thetaOffsetField.text())
+        self.thetaOffsetSlider.blockSignals(True)
+        self.thetaOffsetSlider.setSliderPosition(D.thetaOffset)
+        self.thetaOffsetSlider.blockSignals(False)
 
     # light threshold setters
     @Slot()
     def back_left_set(self):
         """ receives editingFinished signal from backLeftField """
-        D.backLeftThreshold = int(self.backLeftField.text())
+        D.thresholds[0] = int(self.backLeftField.text())
 
     @Slot()
     def front_left_set(self):
         """ receives editingFinished signal from frontLeftField """
-        D.frontLeftThreshold = int(self.frontLeftField.text())
+        D.thresholds[1] = int(self.frontLeftField.text())
 
     @Slot()
     def front_right_set(self):
         """ receives editingFinished signal from frontRightField """
-        D.frontRightThreshold = int(self.frontRightField.text())
+        D.thresholds[2] = int(self.frontRightField.text())
 
     @Slot()
     def back_right_set(self):
         """ receives editingFinished signal from backRightField """
-        D.backRightThreshold = int(self.backRightField.text())
+        D.thresholds[3] = int(self.backRightField.text())
 
     # image changers
     @Slot()
@@ -677,23 +870,30 @@ class RobotBox(QtGui.QMainWindow):
               "Failed to convert pixmap to image", 3000)
 
     @Slot()
-    def load_image(self):
-        """ receives click signal from loadButton """
+    def open_image(self):
+        """ receives click signal from openButton """
         dialog = QtGui.QFileDialog(self)
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
         dialog.setViewMode(QtGui.QFileDialog.Detail)
         fname, _ = dialog.getOpenFileName(
-          self, "Load image", "/home/robotics/Desktop/", "*.png")
+          self, "Open image", "/home/robotics/Desktop/", "*.png")
         
         if fname:
-            D.loadedImage.load(fname)
+            D.imagePath = fname
             self.setWindowTitle('RobotBox - ' + fname)
-            self.statusBar().showMessage("Image " + fname + " loaded", 3000)
+            D.trail = []
+            D.particles = []
+            D.probabilities = []
+            self.erase_mcl()
+            self.statusBar().showMessage("Image " + fname + " opened", 3000)
 
     @Slot()
     def clear_image(self):
         """ receives click signal from clearButton """
-        D.loadedImage = QtGui.QImage()
+        D.imagePath = ""
+        D.trail = []
+        D.particles = []
+        D.probabilities = []
         self.setWindowTitle('RobotBox')
         self.statusBar().showMessage("Cleared image", 3000)
 
@@ -772,25 +972,22 @@ class RobotBox(QtGui.QMainWindow):
     @Slot()
     def x_reset(self):
         """ receives click signal from xResetButton """
-        if math.ceil(D.x) != 0:
-            D.xDiff = D.x
-            D.trail = []
-            D.particles = []
+        D.xDiff = D.x
+        D.trail = []
+        D.particles = []
 
     @Slot()
     def y_reset(self):
         """ receives click signal from yResetButton """
-        if math.ceil(D.y) != 0:
-            D.yDiff = D.y
-            D.trail = []
-            D.particles = []
+        D.yDiff = D.y
+        D.trail = []
+        D.particles = []
 
     @Slot()
     def theta_reset(self):
         """ receives click signal from thetaResetButton """
-        if math.ceil(D.theta) != 0:
-            D.thetaDiff = D.theta
-            D.particles = []
+        D.thetaDiff = D.theta
+        D.particles = []
 
     @Slot()
     def all_reset(self):
@@ -806,15 +1003,15 @@ def sensor_callback( data ):
 
     D.chargeLevel = str(int(round(data.chargeLevel * 100))) + '%'
 
-    # data comes in as meters/radians
+    # data comes in as meters and radians
     D.x = data.x
     D.y = data.y
     D.theta = data.theta
 
-    D.backLeftSensor = data.cliffLeftSignal
-    D.frontLeftSensor = data.cliffFrontLeftSignal
-    D.frontRightSensor = data.cliffFrontRightSignal
-    D.backRightSensor = data.cliffRightSignal
+    D.sensors = [data.cliffLeftSignal,
+                 data.cliffFrontLeftSignal,
+                 data.cliffFrontRightSignal,
+                 data.cliffRightSignal]
 
 
 if __name__=='__main__':
