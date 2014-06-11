@@ -28,20 +28,12 @@ class Data:
 D = Data()
 
 # do we want to use a half-sized image?
-D.half_size = False
+D.half_size = True
 
 # the game controller's buttons and pads ~ initial values...
 D.BTNS = [0]*16
 D.PADS = [0]*16
 
-# initialize other global variables
-D.model_pixel = [0]*25
-D.area = 0
-D.armed = False
-D.target=[0,0]
-D.cenx=370
-D.ceny=410
-D.seeker=0
 
 # a class to handle communicatinos with the launcher
 class launchControl():
@@ -105,153 +97,21 @@ def transition( time, next_state_fn ):
 # State Machine starts here
 #    ... make sure each state has *only 1* call to transition
 #        in each of its control branches: otherwise you get too many FSMs ...
-
-
-        
 ####
     
 def state_start( timer_event = None ):
     """ a starting state for the FSM """
     global D
     D.state = "start"
-##    if 42 == 42:
-##        D.elapsed_time = time.time() - D.start_fsm_time
-##        print "The FSM has been going for", D.elapsed_time, "seconds."
-##        transition( 1.0, state_start )
-##    # these are the same for now; you may want to branch in the future...
-##    else:
-##        transition( 1.0, state_check)
-    transition(1.0, state_check)
-    
-def state_check(timer_event=None):
-    """check if on target"""
-    global D
-    D.state="check"
-    precision=150
-    if D.armed==False:
-        D.launchcontrol.sendCodeToLauncher("stop")
-        transition(.5, state_search)
-    elif abs(D.target[0]-D.cenx)<=precision and abs(D.target[1]-D.ceny)<=precision:
-        transition(.1, state_fire)
+    if 42 == 42:
+        D.elapsed_time = time.time() - D.start_fsm_time
+        print "The FSM has been going for", D.elapsed_time, "seconds."
+        transition( 1.0, state_start )
+    # these are the same for now; you may want to branch in the future...
     else:
-        transition(.1, state_aimx)
+        transition( 1.0, state_start )  
 
-def state_aimx(timer_event = None):
-    """aim at target"""
-    global D
-    D.state="aimx"
-    precision=150
-    xdiff=abs(D.target[0]-D.cenx)
-    xtime=xdiff/10000.0
-    #print xdiff
-    #print xtime
-    if D.target[0]<D.cenx-precision:
-        D.launchcontrol.sendCodeToLauncher("left")
-        transition(xtime, state_aimy)
-    elif D.target[0]>D.cenx+precision:
-        D.launchcontrol.sendCodeToLauncher("right")
-        transition(xtime, state_aimy)
-    else:
-        D.launchcontrol.sendCodeToLauncher("stop")
-        transition(.05, state_aimy)
 
-def state_aimy(timer_event = None):
-    """aim at target"""
-    global D
-    D.state="aimy"
-    precision=150
-    ydiff=abs(D.target[1]-D.ceny)
-    ytime=ydiff/10000.0
-    #print ytime
-    if D.target[1]<D.ceny-precision:
-        D.launchcontrol.sendCodeToLauncher("up")
-        transition(ytime, state_check)
-    elif D.target[1]>D.ceny+precision:
-        D.launchcontrol.sendCodeToLauncher("down")
-        transition(ytime, state_check)
-    else:
-        D.launchcontrol.sendCodeToLauncher("stop")
-        transition(.05, state_check)    
-
-def state_fire(timer_event = None):
-    """fire at target"""
-    global D
-    D.state="fire"
-    if D.armed==True:
-        D.launchcontrol.sendCodeToLauncher("fire")
-        transition(.1, state_standby)
-    else:
-        transition(.1, state_check)
-
-def state_standby(timer_event = None):
-    """ standby"""
-    global D
-    D.state="standby"
-    transition(.1, state_standby)
-
-def state_seekleft(timer_event = None):
-    """ looks for object that has left the frame """
-    global D
-    D.state="seekleft"
-    if D.area<100:
-        D.launchcontrol.sendCodeToLauncher("left")
-        D.seeker=D.seeker+.05
-        transition(.1, state_check)
-    else:
-        transition(.1, state_check)
-    
-
-def state_seekright(timer_event = None):
-    """ looks for object that has left the frame """
-    global D
-    D.state="seekright"
-    if D.area<100:
-        D.launchcontrol.sendCodeToLauncher("right")
-        D.seeker=D.seeker+.05
-        transition(.1, state_check)
-    else:
-        transition(.1, state_check)
-
-def state_seekup(timer_event = None):
-    """ looks for object that has left the frame """
-    global D
-    D.state="seekup"
-    if D.area<100:
-        D.launchcontrol.sendCodeToLauncher("up")
-        D.seeker=D.seeker+1
-        transition(.05, state_check)
-    else:
-        transition(.1, state_check)
-
-def state_seekdown(timer_event = None):
-    """ looks for object that has left the frame """
-    global D
-    D.state="seekdown"
-    if D.area<100:
-        D.launchcontrol.sendCodeToLauncher("down")
-        D.seeker=D.seeker+1
-        transition(1, state_check)
-    else:
-        transition(.1, state_check)   
-
-def state_search(timer_event = None):
-    """ stops the launcher if it sees the object """
-    global D
-    D.state="search"
-    print D.seeker
-    if D.seeker==0:
-        transition(.1, state_seekdown)
-    elif 1<=D.seeker<=2 or 5<D.seeker<=6:
-        transition(.1, state_seekleft)
-    elif 2<D.seeker<=3 or 4<D.seeker<=5:
-        transition(.1, state_seekup)
-    elif 3<D.seeker<=4 or 6<D.seeker<=7:
-        transition(.1, state_seekright)
-    else:
-        transition(.1, state_standby)
-
-    
-    
 
 #################### INITIALIZATION FUNCTIONS ######################
 def init_globals():
@@ -329,70 +189,6 @@ def init_globals():
 ################## END INITIALIZATION FUNCTIONS ####################
 
 ################### IMAGE PROCESSING FUNCTIONS #####################
-def target_lock():
-    """ sets high and low values for red, green, blue,
-        hue, saturation, and value, based on the pixel
-        stored in D.model_pixel, which is set whenever
-        the mouse's right button is clicked
-    """
-    global D
-
-    span = 30
-    
-    pixel_avg = [0]*6
-    thresholds = [[0,0]]*6
-    
-    for i in range(25):
-        pixel_avg[0] += D.model_pixel[i][0]
-        pixel_avg[1] += D.model_pixel[i][1]
-        pixel_avg[2] += D.model_pixel[i][2]
-        pixel_avg[3] += D.model_pixel[i][3]
-        pixel_avg[4] += D.model_pixel[i][4]
-        pixel_avg[5] += D.model_pixel[i][5]
-
-    for i in range(6):
-        pixel_avg[i] = int( pixel_avg[i] / 25 )
-
-        thresholds[i] = [pixel_avg[i] - span, pixel_avg[i] + span]
-
-        if thresholds[i][0] > 255:
-            thresholds[i][0] = 255
-        elif thresholds[i][1] > 255:
-            thresholds[i][1] = 255
-        elif thresholds[i][0] < 0:
-            thresholds[i][0] = 0
-        elif thresholds[i][1] < 0:
-            thresholds[i][1] = 0
-    print "Here are thresholds"
-    print thresholds   
-
-    change_slider('low_red', thresholds[0][0])
-    change_slider('high_red', thresholds[0][1])
-    change_slider('low_green', thresholds[1][0])
-    change_slider('high_green', thresholds[1][1])
-    change_slider('low_blue', thresholds[2][0])
-    change_slider('high_blue', thresholds[2][1])
-    change_slider('low_hue', thresholds[3][0])
-    change_slider('high_hue', thresholds[3][1])
-    change_slider('low_sat', thresholds[4][0])
-    change_slider('high_sat', thresholds[4][1])
-    change_slider('low_val', thresholds[5][0])
-    change_slider('high_val', thresholds[5][1])
-
-    cv.SetTrackbarPos('low_red', 'sliders', D.thresholds['low_red'])
-    cv.SetTrackbarPos('high_red', 'sliders', D.thresholds['high_red'])
-    cv.SetTrackbarPos('low_green', 'sliders', D.thresholds['low_green'])
-    cv.SetTrackbarPos('high_green', 'sliders', D.thresholds['high_green'])
-    cv.SetTrackbarPos('low_blue', 'sliders', D.thresholds['low_blue'])
-    cv.SetTrackbarPos('high_blue', 'sliders', D.thresholds['high_blue'])
-    cv.SetTrackbarPos('low_hue', 'sliders', D.thresholds['low_hue'])
-    cv.SetTrackbarPos('high_hue', 'sliders', D.thresholds['high_hue'])
-    cv.SetTrackbarPos('low_sat', 'sliders', D.thresholds['low_sat'])
-    cv.SetTrackbarPos('high_sat', 'sliders', D.thresholds['high_sat'])
-    cv.SetTrackbarPos('low_val', 'sliders', D.thresholds['low_val'])
-    cv.SetTrackbarPos('high_val', 'sliders', D.thresholds['high_val'])
-
-
 def threshold_image():
     """ runs the image processing in order to create a 
         black and white thresholded image out of D.image
@@ -475,17 +271,11 @@ def find_biggest_region():
                                (lrx,lry), (ulx,lry)]], 
                                 1, cv.RGB(255, 0, 0))
 
-        D.area = abs((ulx - lrx)*(uly - lry))
-        D.target = [(ulx+lrx)/2,(uly+lry)/2]
         # Example of drawing a yellow circle
         # Variables: cenx, ceny
-        #cenx = (ulx+lrx)/2
-        # Crosshairs
-        D.cenx=400
-        #ceny = (uly+lry)/2
-        D.ceny=410
-        if D.armed==True:
-            cv.Circle(D.image, (D.cenx,D.ceny), 8, 
+        cenx = (ulx+lrx)/2
+        ceny = (uly+lry)/2
+        cv.Circle(D.image, (cenx,ceny), 8, 
                             cv.RGB(255, 255, 0), 
                             thickness=1, lineType=8, shift=0)
 
@@ -494,26 +284,16 @@ def find_biggest_region():
 def draw_text_to_image():
     """ A function to handle drawing things to the image """
     # draw a rectangle under the text to make it more visible
-    cv.Rectangle(D.image, (0,0), (100,80), cv.RGB(255,255,255), cv.CV_FILLED)
+    cv.Rectangle(D.image, (0,0), (100,50), cv.RGB(255,255,255), cv.CV_FILLED)
     # place some text there
-    cv.PutText(D.image, "State: " + D.state, (5,10), D.font, cv.RGB(0,0,0))
+    cv.PutText(D.image, D.state, (5,10), D.font, cv.RGB(0,0,0))
     # and some values
-    #randomness = random.randint(-100,100)
-    area = D.area
+    randomness = random.randint(-100,100)
+    area = 4242 + randomness
     area_string = str(area)
-    cv.PutText(D.image, "Area: " + area_string, (5,25), D.font, cv.RGB(0,0,0))
-    # write armed/disarmed state
-    if D.area>500 and D.area<2000:
-        D.armed=True
-    else:
-        D.armed=False
-    armed_string = str(D.armed)
-    cv.PutText(D.image, "Armed: " + armed_string, (5,40), D.font, cv.RGB(0,0,0))
-    #Distances
-    xdiff=abs(D.target[0]-D.cenx)
-    ydiff=abs(D.target[1]-D.ceny)
-    cv.PutText(D.image, "X Diff: " + str(xdiff), (5,55), D.font, cv.RGB(0,0,0))
-    cv.PutText(D.image, "Y Diff: " + str(ydiff), (5,70), D.font, cv.RGB(0,0,0))
+    cv.PutText(D.image, area_string, (5,25), D.font, cv.RGB(0,0,0))
+
+
 
 
 
@@ -535,27 +315,7 @@ def onMouse(event, x, y, flags, param):
         # you'll want to use this to start a model of the pixel
         # colors you'd like to track...
         # first, print the r,g,b and h,s,v at the right-clicked point...
-        print "x, y are", x, y
-        (b,g,r) = D.image[y,x]
-        print "r,g,b is", int(r), int(g), int(b)
-        (h,s,v) = D.hsv[y,x]
-        print "h,s,v is", int(h), int(s), int(v)
 
-        # obtain color info from a 5x5 square of pixels centered around
-        # the clicked point
-        n = 0
-        print "D.model_pixel is:"
-        print "\n"
-        for i in range(-2,3):
-            for j in range(-2,3):
-                (b,g,r) = D.image[y+j,x+i]
-                (h,s,v) = D.hsv[y+j,x+i]
-                D.model_pixel[n] = [r,g,b,h,s,v]
-                print D.model_pixel[n]
-                n += 1
-            print "\n"
-
-        target_lock()
 
 def check_key_press(key_press):
     """ this handler is called when a real key press has been
@@ -573,7 +333,7 @@ def check_key_press(key_press):
         D.running = False  # stops the main loop
         return
 
-    elif key_press == ord('F') or D.BTNS[0]==1:
+    elif key_press == ord('F'):
         # toggle our FSM
         if D.STOP == True: # the FSM is not running
             print "Starting FSM..."
@@ -585,18 +345,18 @@ def check_key_press(key_press):
             print "Stopping FSM..."
             time.sleep(2.0) # wait a bit so that the FSM thread will stop
 
-    elif key_press == ord('i') or D.PADS[1]==-1.0:
+    elif key_press == ord('i'):
             D.launchcontrol.sendCodeToLauncher("up")
-    elif key_press == ord('k') or D.PADS[1]==1.0:
+    elif key_press == ord('k'):
             D.launchcontrol.sendCodeToLauncher("down")
-    elif key_press == ord('l') or D.PADS[0]==-1.0:
+    elif key_press == ord('j'):
             D.launchcontrol.sendCodeToLauncher("left")
-    elif key_press == ord('j') or D.PADS[0]==1.0:
+    elif key_press == ord('l'):
             D.launchcontrol.sendCodeToLauncher("right")
 
-    elif key_press == ord('\n') or D.BTNS[2]==1:
+    elif key_press == ord('\n'):
             D.launchcontrol.sendCodeToLauncher("fire")
-    elif key_press in [ord('z'), ord(' ')] or D.BTNS[1]==1:
+    elif key_press in [ord('z'), ord(' ')]:
             D.launchcontrol.sendCodeToLauncher("stop")
         
     elif key_press == ord('S'):  # save to file
@@ -629,8 +389,6 @@ def check_key_press(key_press):
         except:
             print "No file named thresh.txt found!"
         
-        
-           
     else:
         print "Did not recognize a command for key #", key_press, "(", chr(key_press), ")"
 
@@ -748,7 +506,6 @@ def controller_callback(data): #ADDED
     # print the PADS and BTNS
     print "PADS is", D.PADS
     print "BTNS is", D.BTNS
-    check_key_press(255)
 
 ##################### END CALLBACK FUNCTIONS #######################
 
