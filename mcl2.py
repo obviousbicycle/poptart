@@ -43,16 +43,10 @@ D = Data()  # an object to hold our system's services and state
 # image dimensions
 D.width = 300
 D.height = 300
-# for image loading
-D.imagePath = ""
 # toggle various things for display purposes
 D.showRobot = True
 D.makeTrail = 0
 D.makeMCL = 0
-# robot marker offset
-D.xOffset = 0
-D.yOffset = 0
-D.thetaOffset = 0
 
 # location-related globals
 # list of points where robot was during a GUI update
@@ -84,8 +78,19 @@ D.thresholds = [400,400,400,400]
 D.chargeLevel = ""
 
 # parameters changeable via slider
+# how many points in mcl (not actually changeable yet)
+D.pointDensity = 0.01
+# mcl resampled points noise
 D.xyNoise = 4.0
 D.thetaNoise = 2.5
+# robot marker offset
+D.xOffset = 0
+D.yOffset = 0
+D.thetaOffset = 0
+
+# for whatever unholy reason, this is needed to get loaded images to
+# update properly
+D.filePath = ""
 
 
 # The whole GUI is in this class
@@ -112,7 +117,8 @@ class RobotBox(QtGui.QMainWindow):
         
         # Holds the image frame received from the drone and later
         # processed by the GUI
-        self.image = None
+        self.image = QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888)
+        self.image.fill(QtGui.QColor(0,0,0))
         self.imageLock = Lock()
 
         # Holds the status message to be displayed on the next
@@ -471,7 +477,7 @@ class RobotBox(QtGui.QMainWindow):
         self.xyNoiseSlider.setMinimum(0)
         self.xyNoiseSlider.setMaximum(10*xyNoiseMax)
         self.xyNoiseSlider.setTickInterval(5)
-        self.xyNoiseSlider.setValue(D.xyNoise)
+        self.xyNoiseSlider.setValue(10*D.xyNoise)
         self.xyNoiseSlider.valueChanged.connect(self.xy_noise_change)
 
         # theta noise
@@ -492,7 +498,7 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaNoiseSlider.setMaximum(10*thetaNoiseMax)
         self.thetaNoiseSlider.setTickInterval(5)
         self.thetaNoiseSlider.setSingleStep(5)
-        self.thetaNoiseSlider.setValue(D.thetaNoise)
+        self.thetaNoiseSlider.setValue(10*D.thetaNoise)
         self.thetaNoiseSlider.valueChanged.connect(self.theta_noise_change)
 
         # noiseGroup layout
@@ -555,26 +561,13 @@ class RobotBox(QtGui.QMainWindow):
 
             # updating imageBox
             # right now, it just redraws the entire image every time
-            # the GUI is updated...
-            if not D.imagePath:
-                # Default image is just a black square
-                D.width = 300
-                D.height = 300
-                blank = QtGui.QPixmap.fromImage(
-                    QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888))
-                blank.fill(QtGui.QColor(0,0,0))
-                image = blank
+            # the GUI is updated...   
+            if not D.filePath:
+                image = QtGui.QPixmap.fromImage(self.image)
             else:
+                # really dumb but it works
                 image = QtGui.QImage()
-                image.load(D.imagePath)
-                D.width = image.width()
-                D.height = image.height()
-                # add white pixels to D.lines
-                for x in range(D.width):
-                    for y in range(D.height):
-                        if (QtGui.QColor(image.pixel(x,y)) ==
-                                QtGui.QColor("white")):
-                            D.lines.append((x,y))
+                image.load(D.filePath)
                 image = QtGui.QPixmap.fromImage(image)
             area = D.width*D.height
             origin = (D.width/2, D.height/2)
@@ -741,7 +734,6 @@ class RobotBox(QtGui.QMainWindow):
                 painter.drawLine(pointer)
 
             painter.end()
-
         finally:
             self.imageLock.release()
 
@@ -790,6 +782,9 @@ class RobotBox(QtGui.QMainWindow):
         """ receives valueChanged signal from xOffsetSlider """
         D.xOffset = self.xOffsetSlider.value()
         self.xOffsetField.setText(str(D.xOffset))
+        # the easy but lazy way:
+        self.erase_trail() 
+        self.erase_mcl()
 
     @Slot()
     def x_offset_set(self):
@@ -798,12 +793,16 @@ class RobotBox(QtGui.QMainWindow):
         self.xOffsetSlider.blockSignals(True)
         self.xOffsetSlider.setSliderPosition(D.xOffset)
         self.xOffsetSlider.blockSignals(False)
+        self.erase_trail()
+        self.erase_mcl()
 
     @Slot()
     def y_offset_change(self):
         """ receives valueChanged signal from yOffsetSlider """
         D.yOffset = self.yOffsetSlider.value()
         self.yOffsetField.setText(str(D.yOffset))
+        self.erase_trail()
+        self.erase_mcl()
 
     @Slot()
     def y_offset_set(self):
@@ -812,12 +811,15 @@ class RobotBox(QtGui.QMainWindow):
         self.yOffsetSlider.blockSignals(True)
         self.yOffsetSlider.setSliderPosition(D.yOffset)
         self.yOffsetSlider.blockSignals(False)
+        self.erase_trail()
+        self.erase_mcl()
 
     @Slot()
     def theta_offset_change(self):
         """ receives valueChanged signal from thetaOffsetSlider """
         D.thetaOffset = self.thetaOffsetSlider.value()
         self.thetaOffsetField.setText(str(D.thetaOffset))
+        # I don't /think/ trails and MCL need to be erased
 
     @Slot()
     def theta_offset_set(self):
@@ -878,23 +880,32 @@ class RobotBox(QtGui.QMainWindow):
         fname, _ = dialog.getOpenFileName(
           self, "Open image", "/home/robotics/Desktop/", "*.png")
         
-        if fname:
-            D.imagePath = fname
+        if self.image.load(fname):
+            D.filePath = fname
             self.setWindowTitle('RobotBox - ' + fname)
-            D.trail = []
-            D.particles = []
-            D.probabilities = []
+            self.erase_trail()
             self.erase_mcl()
+            D.width = self.image.width()
+            D.height = self.image.height()
+            # add white pixels to D.lines
+            for x in range(D.width):
+                for y in range(D.height):
+                    if (QtGui.QColor(self.image.pixel(x,y)) ==
+                            QtGui.QColor("white")):
+                        D.lines.append((x,y))
             self.statusBar().showMessage("Image " + fname + " opened", 3000)
+        else:
+            self.statusBar().showMessage("Failed to open image", 3000)
 
     @Slot()
     def clear_image(self):
         """ receives click signal from clearButton """
-        D.imagePath = ""
-        D.trail = []
-        D.particles = []
-        D.probabilities = []
+        self.image = QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888)
+        self.image.fill(QtGui.QColor(0,0,0))
         self.setWindowTitle('RobotBox')
+        self.erase_trail()
+        self.erase_mcl()
+        D.lines = []
         self.statusBar().showMessage("Cleared image", 3000)
 
     # display setters
@@ -940,7 +951,7 @@ class RobotBox(QtGui.QMainWindow):
     def erase_trail(self):
         """ receives click signal from eraseButton """
         D.trail = []
-        self.statusBar().showMessage("Erased trail", 3000)
+        #self.statusBar().showMessage("Erased trail", 3000)
 
     @Slot()
     def show_mcl(self):
@@ -966,7 +977,7 @@ class RobotBox(QtGui.QMainWindow):
         """ receives click signal from eraseButton """
         D.particles = []
         D.probabilities = []
-        self.statusBar().showMessage("Erased MCL particles", 3000)
+        #self.statusBar().showMessage("Erased MCL particles", 3000)
 
     # position data resetters
     @Slot()
