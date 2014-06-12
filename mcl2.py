@@ -34,6 +34,7 @@ GUI_UPDATE_PERIOD = 20 # ms
 USE_CM = 1 # set to 1 to use cm as main distance unit
 SCALE = 1.0 # how many distance units for one pixel?
 WIDGET_SPACING = 10 # pixels of space between widgets
+DEFAULT_SIZE = 300 # side length of default image
 
 
 class Data: pass    # empty class for a generic data holder
@@ -41,16 +42,25 @@ D = Data()  # an object to hold our system's services and state
 
 # visual-related globals
 # image dimensions
-D.width = 300
-D.height = 300
+D.width = DEFAULT_SIZE
+D.height = DEFAULT_SIZE
 # toggle various things for display purposes
 D.showRobot = True
 D.makeTrail = 0
 D.makeMCL = 0
+# robot marker offset
+D.xOffset = 0
+D.yOffset = 0
+D.thetaOffset = 0
 
 # location-related globals
 # list of points where robot was during a GUI update
 D.trail = []
+# as far as I can tell, MCL only needs the current location and the
+# previous location, not all of D.trail, and it doesn't make a lot of
+# sense for MCL to depend on trails being on anyway
+D.currentLocation = ()
+D.previousLocation = ()
 # list of white points on image representing white lines on floor
 D.lines = []
 # holds MCL particles and respective probabilities
@@ -77,20 +87,14 @@ D.thresholds = [400,400,400,400]
 # just because
 D.chargeLevel = ""
 
-# parameters changeable via slider
+# MCL-exclusive globals
 # how many points in mcl (not actually changeable yet)
 D.pointDensity = 0.01
 # mcl resampled points noise
 D.xyNoise = 4.0
 D.thetaNoise = 2.5
-# robot marker offset
-D.xOffset = 0
-D.yOffset = 0
-D.thetaOffset = 0
-
-# for whatever unholy reason, this is needed to get loaded images to
-# update properly
-D.filePath = ""
+# use special particle coloring?
+D.particleColoring = False
 
 
 # The whole GUI is in this class
@@ -117,6 +121,7 @@ class RobotBox(QtGui.QMainWindow):
         
         # Holds the image frame received from the drone and later
         # processed by the GUI
+        # currently unused whoops
         self.image = QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888)
         self.image.fill(QtGui.QColor(0,0,0))
         self.imageLock = Lock()
@@ -350,8 +355,8 @@ class RobotBox(QtGui.QMainWindow):
         self.hide_mclButton.clicked.connect(self.hide_mcl)
         self.noMCLButton = QtGui.QRadioButton("Off", self)
         self.noMCLButton.clicked.connect(self.no_mcl)
-        self.erase_mclButton = QtGui.QPushButton("Erase", self)
-        self.erase_mclButton.clicked.connect(self.erase_mcl)
+        self.eraseMCLButton = QtGui.QPushButton("Erase", self)
+        self.eraseMCLButton.clicked.connect(self.erase_mcl)
         # limit radio button choices to MCL-related buttons
         MCLGroup = QtGui.QButtonGroup(self)
         MCLGroup.addButton(self.showMCLButton)
@@ -374,7 +379,7 @@ class RobotBox(QtGui.QMainWindow):
         displayLayout.addWidget(self.showMCLButton, 9, 1)
         displayLayout.addWidget(self.hide_mclButton, 9, 2)
         displayLayout.addWidget(self.noMCLButton, 9, 3)
-        displayLayout.addWidget(self.erase_mclButton, 10, 2)
+        displayLayout.addWidget(self.eraseMCLButton, 10, 2)
         # border stretch
         displayLayout.setColumnStretch(0, 1)
         displayLayout.setColumnStretch(6, 1)
@@ -501,7 +506,13 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaNoiseSlider.setValue(10*D.thetaNoise)
         self.thetaNoiseSlider.valueChanged.connect(self.theta_noise_change)
 
-        # noiseGroup layout
+        # particle coloring
+        self.particleColoringCheckbox = QtGui.QCheckBox(
+          "Variable particle colors\n(may be expensive)", self)
+        self.particleColoringCheckbox.stateChanged.connect(
+          self.particle_coloring_change)
+
+        # mclGroup layout
         mclLayout = QtGui.QGridLayout()
         mclGroup.setLayout(mclLayout)
         mclLayout.addWidget(xyNoiseLabel, 3, 0)
@@ -510,6 +521,7 @@ class RobotBox(QtGui.QMainWindow):
         mclLayout.addWidget(thetaNoiseLabel, 5, 0)
         mclLayout.addWidget(self.thetaNoiseField, 6, 0)
         mclLayout.addWidget(self.thetaNoiseSlider, 6, 1)
+        mclLayout.addWidget(self.particleColoringCheckbox, 7, 0, 1, 2)
         # border stretch
         mclLayout.setRowStretch(0, 1)
         mclLayout.setRowStretch(20, 1)
@@ -540,180 +552,173 @@ class RobotBox(QtGui.QMainWindow):
 
         self.imageLock.acquire()
         try:
-            # updating infoBox values
+            # updating position
             # if USE_CM = 1, values are converted here
             xDisplay = round(100.0**USE_CM * (D.x-D.xDiff), 2)+D.xOffset
             yDisplay = round(100.0**USE_CM * (D.y-D.yDiff), 2)+D.yOffset
             self.xValue.setText(str(xDisplay))
             self.yValue.setText(str(yDisplay))
             # convert theta to degrees and set bounds
+            # 0 degrees arbitrarily defined to be the horizontal and
+            # theta increases in the counterclockwise direction
             thetaDisplay = (int(round(math.degrees(D.theta - D.thetaDiff)))+
                             D.thetaOffset)
             while thetaDisplay > 360: thetaDisplay -= 360
             while thetaDisplay < 0: thetaDisplay += 360
             self.thetaValue.setText(str(thetaDisplay))
 
-            # updating lightBox values
+            # updating light sensor readings
             self.backLeftValue.setText(str(D.sensors[0]))
             self.frontLeftValue.setText(str(D.sensors[1]))
             self.frontRightValue.setText(str(D.sensors[2]))
             self.backRightValue.setText(str(D.sensors[3]))
 
-            # updating imageBox
-            # right now, it just redraws the entire image every time
-            # the GUI is updated...   
-            if not D.filePath:
-                image = QtGui.QPixmap.fromImage(self.image)
-            else:
-                # really dumb but it works
-                image = QtGui.QImage()
-                image.load(D.filePath)
-                image = QtGui.QPixmap.fromImage(image)
+            # updating background image
+            # it's always black. features drawn later
+            image = QtGui.QPixmap()
+            image.convertFromImage(QtGui.QImage(
+              D.width,D.height,QtGui.QImage.Format_RGB888))
+            image.fill(QtGui.QColor(0,0,0))
             area = D.width*D.height
             origin = (D.width/2, D.height/2)
+
+            # updating locations
+            D.previousLocation = D.currentLocation
             # most graphics dealios consider top-left corner to be the
             # origin, so we need to adjust for that
-            location = (origin[0] + SCALE*xDisplay,
-                        origin[1] - SCALE*yDisplay,
-                        D.theta)
-
-            # updating locations to D.trail
-            if D.makeTrail:
-                if not D.trail or location != D.trail[-1]:
-                    D.trail.append(location)
-                    D.recentMove = True
-                else:
-                    D.recentMove = False
+            D.currentLocation = (origin[0] + SCALE*xDisplay,
+                                 origin[1] - SCALE*yDisplay,
+                                 D.theta)
+            D.recentMove = (False if D.previousLocation == D.currentLocation
+              or () else True)
+            if D.makeTrail and D.recentMove:
+                D.trail.append(D.currentLocation)
 
             # calculating MCL particles
             # hold on to yer britches son cause this is one wild ride
-            if D.makeMCL: # hopefully, if D.makeMCL then D.maketrail
+            if D.makeMCL:
                 numPoints = int(area*D.pointDensity)
                 if not D.particles:
                     # initially, every point has an equal probability
                     # of being the robot's actual location
-                    D.probabilities = [1.0/numPoints]*numPoints
+                    D.probabilities = [1.0/numPoints 
+                                       for i in range(numPoints)]
                     # generate points with random x, y, theta
                     for n in range(numPoints):
                         p = [random.randint(0, D.width-1),
-                             random.randint(0, D.height-1),
-                             random.randint(0,360)]
+                             random.randint(0, D.height-1)]
                         D.particles.append(p)
-                elif len(D.trail) >= 2:
+                elif D.recentMove:
                     # from the most recent motion data, calculate how
                     # far the particles must move
-                    difference = (D.trail[-1][0]-D.trail[-2][0],
-                                  D.trail[-1][1]-D.trail[-2][1],
-                                  D.trail[-1][2]-D.trail[-2][2])
-                    if D.recentMove:
-                        move = math.hypot(difference[0], difference[1])
-                        oldGen = D.particles
-                        oldProbs = D.probabilities
-                        index = 0
-                        for oldPt in oldGen:
-                            # particles turn with robot
-                            oldPt[2] += difference[2]
-                            # apply robot's x and y change to particles
-                            oldPt[0] += move*math.sin(math.radians(oldPt[2]))
-                            oldPt[1] += move*math.cos(math.radians(oldPt[2]))
-                            # particles that move off-screen are killed
-                            if (oldPt[0] < 0 or oldPt[0] > D.width or
-                                oldPt[1] < 0 or oldPt[1] > D.height):
-                                # killed particles unlikely to
-                                # represent actual location, so we
-                                # set their prob very low
-                                oldProbs[index] = 0.000001
-                            # if IR readings exceed threshold, set
-                            # probabilities corresponding to distance
-                            # from image's white points
-                            if (D.lines and 
-                                    (D.sensors[0] >= D.thresholds[0] or
-                                     D.sensors[1] >= D.thresholds[1] or
-                                     D.sensors[2] >= D.thresholds[2] or
-                                     D.sensors[3] >= D.thresholds[3])):
-                                toLine = [
-                                    math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
-                                    for p in D.lines
-                                    ]
-                                oldProbs[index] *= 1/(1+min(toLine))
-                            index += 1
-                        # begin populating new generation with copies
-                        # from old generation, based on the points'
-                        # probabilities
-                        newGen = []
-                        newProbs = []
-                        sumProb = math.fsum(oldProbs)
-                        cumulativeProb = [math.fsum(oldProbs[i::-1]) for i in
-                                          range(numPoints)]
-                        counter = 0
-                        for n in range(numPoints):
-                            # step approach
-                            newGen.append(oldGen[counter])
-                            newProbs.append(oldProbs[counter]/sumProb)
-                            while (
-                              n*sumProb/numPoints > cumulativeProb[counter]):
-                                counter += 1
-                        # add some noise to each new point
-                        D.particles = map(lambda p: [
-                                            random.gauss(p[0],D.xyNoise),
-                                            random.gauss(p[1],D.xyNoise),
-                                            random.gauss(p[2],D.thetaNoise)
-                                            ],
-                                          newGen)
-                        D.probabilities = newProbs
+                    difference = (D.currentLocation[0]-D.previousLocation[0],
+                                  D.currentLocation[1]-D.previousLocation[1])
+                    oldGen = D.particles
+                    oldProbs = D.probabilities
+                    index = 0
+                    for oldPt in oldGen:
+                        # apply robot's x and y change to particles
+                        oldPt[0] += difference[0]
+                        oldPt[1] += difference[1]
+                        # particles that move off-screen are killed
+                        if (oldPt[0] < 0 or oldPt[0] > D.width or
+                            oldPt[1] < 0 or oldPt[1] > D.height):
+                            # killed particles unlikely to
+                            # represent actual location, so we
+                            # set their prob very low
+                            oldProbs[index] = 0.000001
+                        # if IR readings exceed threshold, set
+                        # probabilities corresponding to distance
+                        # from image's white points
+                        if (D.lines and 
+                                (D.sensors[0] >= D.thresholds[0] or
+                                 D.sensors[1] >= D.thresholds[1] or
+                                 D.sensors[2] >= D.thresholds[2] or
+                                 D.sensors[3] >= D.thresholds[3])):
+                            toLine = [
+                                math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
+                                for p in D.lines
+                                ]
+                            oldProbs[index] *= 1/(1+min(toLine))
+                        index += 1
+                    # begin populating new generation with copies
+                    # from old generation, based on the points'
+                    # probabilities
+                    newGen = []
+                    newProbs = []
+                    sumProb = math.fsum(oldProbs)
+                    cumulativeProb = [math.fsum(oldProbs[i::-1]) for i in
+                                      range(numPoints)]
+                    counter = 0
+                    for n in range(numPoints):
+                        # step approach
+                        newGen.append(oldGen[counter])
+                        newProbs.append(oldProbs[counter]/sumProb)
+                        while (
+                          n*sumProb/numPoints > cumulativeProb[counter]):
+                            counter += 1
+                    # add some noise to each new point
+                    D.particles = map(lambda p: [
+                                        random.gauss(p[0],D.xyNoise),
+                                        random.gauss(p[1],D.xyNoise)
+                                        ],
+                                      newGen)
+                    D.probabilities = newProbs
 
-            # drawing time
+            # time to draw
+            # this ordering is very deliberate - particles drawn first,
+            # then trails on top of that, then map features on top of
+            # that, and finally robot marker always on top and visible
             painter = QtGui.QPainter()
             painter.begin(image)
             # drawing particles
             if D.makeMCL == 2:
                 particleRadius = 2
-                distanceFromParticle = particleRadius + 3
-                particlePointerLength = 4
-                #mostRed = max(D.probabilities)
-                #mostPurple = min(D.probabilities)
-                index = 0
-                for p in D.probabilities:
-                    #if mostRed == mostPurple:
-                    #    hue = 150
-                    #else:
-                    #    hue = 300 * (p-mostPurple)/(mostRed-mostPurple)
-                    color = QtGui.QColor.fromHsv(150,255,255)
-                    painter.setPen(color)
-                    painter.setBrush(color)
-                    painter.drawEllipse(
-                      QtCore.QPoint(
-                        D.particles[index][0], D.particles[index][1]), 
-                        particleRadius, particleRadius)
-                    
-                    xDistance = distanceFromParticle*math.sin(
-                      math.radians(D.particles[index][2]))
-                    yDistance = distanceFromParticle*math.cos(
-                      math.radians(D.particles[index][2]))
-                    xLength = xDistance + particlePointerLength*math.sin(
-                      math.radians(D.particles[index][2]))
-                    yLength = yDistance + particlePointerLength*math.cos(
-                      math.radians(D.particles[index][2]))
-                    pointer = QtCore.QLineF(xDistance+D.particles[index][0],
-                                            yDistance+D.particles[index][1],
-                                            xLength+D.particles[index][0],
-                                            yLength+D.particles[index][1])
-                    painter.drawLine(pointer)
-                    index += 1
+                #distanceFromParticle = particleRadius+3
+                #particlePointerLength = 4
+                if D.particleColoring:
+                    hue = 0
+                    for p in D.particles:
+                        # the color of one point is based on how many
+                        # other points are close to it, "close" here
+                        # being defined very arbitrarily
+                        near = 5 # pixels
+                        numClosePoints = len(filter(
+                          lambda q: near >= abs(q[0]-p[0]) and near >=
+                          abs(q[1]-p[1]), D.particles))
+                        hue = 300*(1-numClosePoints/(numPoints*0.25))
+                        if hue < 0.0: hue = 0
+                        color = QtGui.QColor.fromHsv(hue,255,150)
+                        painter.setPen(color)
+                        painter.setBrush(color)
+                        painter.drawEllipse(QtCore.QPoint(p[0], p[1]), 
+                          particleRadius, particleRadius)
+                else:
+                    painter.setPen(QtGui.QColor("darkBlue"))
+                    painter.setBrush(QtGui.QColor("darkBlue"))
+                    for p in D.particles:
+                        painter.drawEllipse(QtCore.QPoint(p[0], p[1]), 
+                          particleRadius, particleRadius)
             # drawing robot trail
-            if D.makeTrail == 2 and len(D.trail) > 1:
+            if D.makeTrail == 2 and len(D.trail) >= 2:
                 painter.setPen(QtGui.QColor(255,0,0))
                 painter.setBrush(QtGui.QColor(255,0,0))
                 for p in range(1,len(D.trail)):
                     painter.drawLine(D.trail[p-1][0], D.trail[p-1][1],
                                      D.trail[p][0], D.trail[p][1])
+            # drawing map features
+            if D.lines:
+                painter.setPen(QtGui.QColor(255,255,255))
+                painter.setBrush(QtGui.QColor(255,255,255))
+                for p in D.lines:
+                    painter.drawPoint(p[0],p[1])
             # drawing robot location and pointer
             if D.showRobot:
                 markerRadius = 6
                 painter.setPen(QtGui.QColor("cyan"))
                 painter.setBrush(QtGui.QColor("cyan"))
                 painter.drawEllipse(
-                  QtCore.QPoint(location[0],location[1]),
+                  QtCore.QPoint(D.currentLocation[0],D.currentLocation[1]),
                   markerRadius, markerRadius)
 
                 painter.setPen(QtGui.QColor("cyan"))
@@ -727,10 +732,10 @@ class RobotBox(QtGui.QMainWindow):
                   math.radians(thetaDisplay+90.0)))
                 yLength = (yDistance + pointerLength*math.cos(
                   math.radians(thetaDisplay+90.0)))
-                pointer = QtCore.QLineF(xDistance+location[0],
-                                        yDistance+location[1],
-                                        xLength+location[0],
-                                        yLength+location[1])
+                pointer = QtCore.QLineF(xDistance+D.currentLocation[0],
+                                        yDistance+D.currentLocation[1],
+                                        xLength+D.currentLocation[0],
+                                        yLength+D.currentLocation[1])
                 painter.drawLine(pointer)
 
             painter.end()
@@ -748,7 +753,7 @@ class RobotBox(QtGui.QMainWindow):
                 "Charge" in self.statusBar().currentMessage()):
             self.statusBar().showMessage("Charge: " + D.chargeLevel)
 
-    # parameter changes
+    # mcl things
     @Slot()
     def xy_noise_change(self):
         """ receives valueChanged signal from xyNoiseSlider """
@@ -777,6 +782,15 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaNoiseSlider.setSliderPosition(10*D.thetaNoise)
         self.thetaNoiseSlider.blockSignals(False)
 
+    @Slot()
+    def particle_coloring_change(self):
+        """receives stateChanged signal from
+        particleColoringCheckbox
+        """
+        D.particleColoring = (True if
+          self.particleColoringCheckbox.isChecked() else False)
+
+    # offset changers
     @Slot()
     def x_offset_change(self):
         """ receives valueChanged signal from xOffsetSlider """
@@ -859,7 +873,6 @@ class RobotBox(QtGui.QMainWindow):
         dialog.setViewMode(QtGui.QFileDialog.Detail)
         fname, _ = dialog.getSaveFileName(
           self, "Save image", "/home/robotics/Desktop/", "*.png")
-
         saving = self.imageBox.pixmap().toImage()
         if not saving.isNull() and fname:
             if fname[-4:] != ".png":
@@ -874,23 +887,24 @@ class RobotBox(QtGui.QMainWindow):
     @Slot()
     def open_image(self):
         """ receives click signal from openButton """
+        toLoad = QtGui.QImage()
         dialog = QtGui.QFileDialog(self)
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
         dialog.setViewMode(QtGui.QFileDialog.Detail)
         fname, _ = dialog.getOpenFileName(
-          self, "Open image", "/home/robotics/Desktop/", "*.png")
-        
-        if self.image.load(fname):
-            D.filePath = fname
+          self, "Open image (must be black with white features)",
+          "/home/robotics/Desktop/", "*.png")
+        if toLoad.load(fname):
+            D.width = toLoad.width()
+            D.height = toLoad.height()
+            D.lines = []
             self.setWindowTitle('RobotBox - ' + fname)
             self.erase_trail()
             self.erase_mcl()
-            D.width = self.image.width()
-            D.height = self.image.height()
             # add white pixels to D.lines
             for x in range(D.width):
                 for y in range(D.height):
-                    if (QtGui.QColor(self.image.pixel(x,y)) ==
+                    if (QtGui.QColor(toLoad.pixel(x,y)) ==
                             QtGui.QColor("white")):
                         D.lines.append((x,y))
             self.statusBar().showMessage("Image " + fname + " opened", 3000)
@@ -900,12 +914,12 @@ class RobotBox(QtGui.QMainWindow):
     @Slot()
     def clear_image(self):
         """ receives click signal from clearButton """
-        self.image = QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888)
-        self.image.fill(QtGui.QColor(0,0,0))
+        D.width = DEFAULT_SIZE
+        D.height = DEFAULT_SIZE
+        D.lines = []
         self.setWindowTitle('RobotBox')
         self.erase_trail()
         self.erase_mcl()
-        D.lines = []
         self.statusBar().showMessage("Cleared image", 3000)
 
     # display setters
@@ -923,28 +937,19 @@ class RobotBox(QtGui.QMainWindow):
     def show_trail(self):
         """ receives click signal from showTrailButton """
         self.eraseTrailButton.setEnabled(True)
-        self.showMCLButton.setEnabled(True)
-        self.hide_mclButton.setEnabled(True)
         D.makeTrail = 2
 
     @Slot()
     def hide_trail(self):
         """ receives click signal from hideTrailButton """
         self.eraseTrailButton.setEnabled(True)
-        self.showMCLButton.setEnabled(True)
-        self.hide_mclButton.setEnabled(True)
         D.makeTrail = 1
 
     @Slot()
     def no_trail(self):
         """ receives click signal from noTrailButton """
         self.erase_trail()
-        self.no_mcl()
         self.eraseTrailButton.setEnabled(False)
-        self.showMCLButton.setEnabled(False)
-        self.hide_mclButton.setEnabled(False)
-        self.noMCLButton.setChecked(True)
-        self.statusBar().showMessage("Erased trail and MCL particles", 3000)
         D.makeTrail = 0
 
     @Slot()
@@ -956,20 +961,20 @@ class RobotBox(QtGui.QMainWindow):
     @Slot()
     def show_mcl(self):
         """ receives click signal from showMCLButton """
-        self.erase_mclButton.setEnabled(True)
+        self.eraseMCLButton.setEnabled(True)
         D.makeMCL = 2
 
     @Slot()
     def hide_mcl(self):
         """ receives click signal from hide_mclButton """
-        self.erase_mclButton.setEnabled(True)
+        self.eraseMCLButton.setEnabled(True)
         D.makeMCL = 1
 
     @Slot()
     def no_mcl(self):
         """ receives click signal from noMCLButton """
         self.erase_mcl()
-        self.erase_mclButton.setEnabled(False)
+        self.eraseMCLButton.setEnabled(False)
         D.makeMCL = 0
 
     @Slot()
