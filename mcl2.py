@@ -63,12 +63,8 @@ D.trail = []
 # sense for MCL to depend on trails being on anyway
 D.currentLocation = ()
 D.previousLocation = ()
-D.xPrevious = 0.0
-D.xCurrent = 0.0
-D.yPrevious = 0.0
-D.yCurrent = 0.0
-D.thetaPrevious = 0.0
-D.thetaCurrent = 0.0
+# for theta offset/reset purposes
+D.pivot = ()
 # list of white points on image representing white lines on floor
 D.lines = []
 # holds MCL particles and respective probabilities
@@ -326,18 +322,6 @@ class RobotBox(QtGui.QMainWindow):
         ###
         displayGroup = QtGui.QWidget(self)
 
-        # # Robot marker
-        # robotLabel = QtGui.QLabel(self)
-        # robotLabel.setText("Robot marker")
-        # self.showRobotButton = QtGui.QRadioButton("Show", self)
-        # self.showRobotButton.clicked.connect(self.show_robot)
-        # self.hideRobotButton = QtGui.QRadioButton("Hide", self)
-        # self.hideRobotButton.clicked.connect(self.hide_robot)
-        # # limit radio button choices to marker-related buttons
-        # markerGroup = QtGui.QButtonGroup(self)
-        # markerGroup.addButton(self.showRobotButton)
-        # markerGroup.addButton(self.hideRobotButton)
-
         # robot marker
         self.robotMarkerCheckbox = QtGui.QCheckBox("Robot marker", self)
         self.robotMarkerCheckbox.stateChanged.connect(
@@ -380,20 +364,19 @@ class RobotBox(QtGui.QMainWindow):
         # Assembling layout for displayGroup
         displayLayout = QtGui.QGridLayout()
         displayGroup.setLayout(displayLayout)
-        #displayLayout.addWidget(robotLabel, 1, 1)
-        #displayLayout.addWidget(self.showRobotButton, 2, 1)
-        #displayLayout.addWidget(self.hideRobotButton, 2, 3)
-        displayLayout.addWidget(self.robotMarkerCheckbox, 2, 1)
-        displayLayout.addWidget(trailLabel, 4, 1)
+        displayLayout.addWidget(self.robotMarkerCheckbox, 2, 1, 1, 2)
+        displayLayout.addWidget(trailLabel, 4, 1, 1, 2)
         displayLayout.addWidget(self.showTrailButton, 5, 1)
         displayLayout.addWidget(self.hideTrailButton, 5, 2)
         displayLayout.addWidget(self.noTrailButton, 5, 3)
-        displayLayout.addWidget(self.eraseTrailButton, 6, 1)
-        displayLayout.addWidget(MCLLabel, 8, 1)
+        displayLayout.addWidget(self.eraseTrailButton, 6, 1, 1, 3,
+          QtCore.Qt.AlignLeft)
+        displayLayout.addWidget(MCLLabel, 8, 1, 1, 2)
         displayLayout.addWidget(self.showMCLButton, 9, 1)
         displayLayout.addWidget(self.hide_mclButton, 9, 2)
         displayLayout.addWidget(self.noMCLButton, 9, 3)
-        displayLayout.addWidget(self.eraseMCLButton, 10, 1)
+        displayLayout.addWidget(self.eraseMCLButton, 10, 1, 1, 3,
+          QtCore.Qt.AlignLeft)
         # border stretch
         displayLayout.setColumnStretch(0, 1)
         displayLayout.setColumnStretch(6, 1)
@@ -524,7 +507,7 @@ class RobotBox(QtGui.QMainWindow):
 
         # particle coloring
         self.particleColoringCheckbox = QtGui.QCheckBox(
-          "Variable particle colors\n(may be expensive)", self)
+          "Variable particle colors\n(may be slow)", self)
         self.particleColoringCheckbox.stateChanged.connect(
           self.particle_coloring_change)
 
@@ -594,34 +577,34 @@ class RobotBox(QtGui.QMainWindow):
             self.backRightValue.setText(str(D.sensors[3]))
 
             # updating background image
-            # it's always black. features drawn later
+            # it's always gray. features drawn later
             image = QtGui.QPixmap()
             image.convertFromImage(QtGui.QImage(
               D.width,D.height,QtGui.QImage.Format_RGB888))
-            image.fill(QtGui.QColor(0,0,0))
+            image.fill(QtGui.QColor(127,127,127))
             origin = (D.width/2, D.height/2)
 
             # updating locations
+            if (D.thetaDiff or D.thetaOffset) and not D.pivot:
+                D.pivot = D.previousLocation
             D.previousLocation = D.currentLocation
             # most graphics dealios consider top-left corner to be the
             # origin, so we need to adjust for that
             D.currentLocation = (origin[0] + SCALE*xDisplay,
                                  origin[1] - SCALE*yDisplay,
                                  thetaDisplay)
-            if D.previousLocation and (D.thetaDiff or D.thetaOffset):
-                print "THETA OFFSET"
+            if D.pivot:
                 distance = math.hypot(
-                  D.currentLocation[0] - D.previousLocation[0],
-                  D.currentLocation[1] - D.previousLocation[1])
-                rotatedLocation = (origin[0] + distance*math.cos(
-                                       math.radians(D.previousLocation[2])),
-                                     origin[1] - distance*math.sin(
-                                       math.radians(D.previousLocation[2])),
+                  D.currentLocation[0] - D.pivot[0],
+                  D.currentLocation[1] - D.pivot[1])
+                pivotAngle = math.atan2(D.currentLocation[1]-D.pivot[1],D.currentLocation[0]-D.pivot[0])
+                rotatedLocation = (D.pivot[0] + distance*math.cos(
+                                       pivotAngle+math.radians(D.thetaOffset+D.thetaDiff)),
+                                     D.pivot[1] + distance*math.sin(
+                                       pivotAngle+math.radians(D.thetaOffset+D.thetaDiff)),
                                      thetaDisplay)
                 D.currentLocation = rotatedLocation
-            print "Previous:", D.previousLocation
-            print "Now:", D.currentLocation
-            D.recentMove = not (D.previousLocation == D.currentLocation and D.previousLocation)
+            D.recentMove = not (D.previousLocation and D.previousLocation[0:1] == D.currentLocation[0:1])
             if D.makeTrail and D.recentMove:
                 D.trail.append(D.currentLocation)
 
@@ -866,7 +849,8 @@ class RobotBox(QtGui.QMainWindow):
         """ receives valueChanged signal from thetaOffsetSlider """
         D.thetaOffset = self.thetaOffsetSlider.value()
         self.thetaOffsetField.setText(str(D.thetaOffset))
-        # I don't /think/ trails and MCL need to be erased
+        self.erase_trail()
+        self.erase_mcl()
 
     @Slot()
     def theta_offset_set(self):
@@ -875,6 +859,9 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaOffsetSlider.blockSignals(True)
         self.thetaOffsetSlider.setSliderPosition(D.thetaOffset)
         self.thetaOffsetSlider.blockSignals(False)
+        self.erase_trail()
+        self.erase_mcl()
+        D.pivot = ()
 
     # light threshold setters
     @Slot()
@@ -955,17 +942,6 @@ class RobotBox(QtGui.QMainWindow):
         self.erase_mcl()
         self.statusBar().showMessage("Cleared image", 3000)
 
-    # display setters
-    # @Slot()
-    # def show_robot(self):
-    #     """ receives click signal from showRobotButton """
-    #     D.showRobot = True
-
-    # @Slot()
-    # def hide_robot(self):
-    #     """ receives click signal from hideRobotButton """
-    #     D.showRobot = False
-
     @Slot()
     def robot_marker_change(self):
         """receives stateChanged signal from robotMarkerCheckbox"""
@@ -1029,24 +1005,29 @@ class RobotBox(QtGui.QMainWindow):
     def x_reset(self):
         """ receives click signal from xResetButton """
         D.xDiff = D.x
-        D.trail = []
-        D.particles = []
+        self.erase_trail()
+        self.erase_mcl()
         D.currentLocation = ()
+        D.previousLocation = ()
 
     @Slot()
     def y_reset(self):
         """ receives click signal from yResetButton """
         D.yDiff = D.y
-        D.trail = []
-        D.particles = []
+        self.erase_trail()
+        self.erase_mcl()
         D.currentLocation = ()
+        D.previousLocation = ()
 
     @Slot()
     def theta_reset(self):
         """ receives click signal from thetaResetButton """
         D.thetaDiff = D.theta
-        D.trail = []
-        D.particles = []
+        self.erase_trail()
+        self.erase_mcl()
+        D.currentLocation = ()
+        D.previousLocation = ()
+        D.pivot = ()
 
     @Slot()
     def all_reset(self):
