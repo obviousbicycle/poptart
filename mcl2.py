@@ -77,7 +77,9 @@ D.recentMove = False
 # for various data
 # in (centi)meters/degrees
 D.x = 0.0
+D.xPrevious = 0.0
 D.y = 0.0
+D.yPrevious = 0.0
 D.theta = 0.0
 # for "clearing" odometer
 D.xDiff = 0.0
@@ -556,26 +558,6 @@ class RobotBox(QtGui.QMainWindow):
 
         self.imageLock.acquire()
         try:
-            # updating position
-            # if USE_CM = 1, values are converted here
-            xDisplay = 100.0**USE_CM * (D.x-D.xDiff) + D.xOffset/SCALE
-            yDisplay = 100.0**USE_CM * (D.y-D.yDiff) + D.yOffset/SCALE
-            self.xValue.setText(str(round(xDisplay,2)))
-            self.yValue.setText(str(round(yDisplay,2)))
-            # convert theta to degrees and set bounds
-            # 0 degrees arbitrarily defined to be the horizontal and
-            # theta increases in the counterclockwise direction
-            thetaDisplay = math.degrees(D.theta-D.thetaDiff)+D.thetaOffset
-            while thetaDisplay > 360: thetaDisplay -= 360
-            while thetaDisplay < 0: thetaDisplay += 360
-            self.thetaValue.setText(str(int(round(thetaDisplay))))
-
-            # updating light sensor readings
-            self.backLeftValue.setText(str(D.sensors[0]))
-            self.frontLeftValue.setText(str(D.sensors[1]))
-            self.frontRightValue.setText(str(D.sensors[2]))
-            self.backRightValue.setText(str(D.sensors[3]))
-
             # updating background image
             # it's always gray. features drawn later
             image = QtGui.QPixmap()
@@ -584,26 +566,52 @@ class RobotBox(QtGui.QMainWindow):
             image.fill(QtGui.QColor(127,127,127))
             origin = (D.width/2, D.height/2)
 
+            # convert theta to degrees and set bounds
+            # 0 degrees arbitrarily defined to be the horizontal and
+            # theta increases in the counterclockwise direction
+            thetaDisplay = math.degrees(D.theta-D.thetaDiff)+D.thetaOffset
+            while thetaDisplay > 360: thetaDisplay -= 360
+            while thetaDisplay < 0: thetaDisplay += 360
+            self.thetaValue.setText(str(int(round(thetaDisplay))))
+
+            # updating position
+            xActual = D.x
+            yActual = D.y
+
             # updating locations
             if (D.thetaDiff or D.thetaOffset) and not D.pivot:
-                D.pivot = D.previousLocation
+                D.pivot = (D.xPrevious,D.yPrevious)
+                
+            if (D.thetaDiff or D.thetaOffset) and D.pivot:
+                distance = math.hypot(
+                      D.x - D.pivot[0],
+                      D.y - D.pivot[1])
+                pivotAngle = math.atan2(D.y-D.pivot[1],D.x-D.pivot[0])
+                pivotAngle += 2*math.pi
+                xActual = D.pivot[0] + distance*math.cos(
+                                    pivotAngle+math.radians(D.thetaOffset))
+                yActual = D.pivot[1] + distance*math.sin(
+                                    pivotAngle+math.radians(D.thetaOffset))
+
+            # if USE_CM = 1, values are converted here
+            xDisplay = 100.0**USE_CM * (xActual-D.xDiff) + D.xOffset/SCALE
+            yDisplay = 100.0**USE_CM * (yActual-D.yDiff) + D.yOffset/SCALE
+            self.xValue.setText(str(round(xDisplay,2)))
+            self.yValue.setText(str(round(yDisplay,2)))
+
+            # updating light sensor readings
+            self.backLeftValue.setText(str(D.sensors[0]))
+            self.frontLeftValue.setText(str(D.sensors[1]))
+            self.frontRightValue.setText(str(D.sensors[2]))
+            self.backRightValue.setText(str(D.sensors[3]))
+
+            # updating locations
             D.previousLocation = D.currentLocation
             # most graphics dealios consider top-left corner to be the
             # origin, so we need to adjust for that
-            D.currentLocation = (origin[0] + SCALE*xDisplay,
-                                 origin[1] - SCALE*yDisplay,
+            D.currentLocation = (origin[0] + xDisplay*SCALE,
+                                 origin[1] - yDisplay*SCALE,
                                  thetaDisplay)
-            if D.pivot:
-                distance = math.hypot(
-                  D.currentLocation[0] - D.pivot[0],
-                  D.currentLocation[1] - D.pivot[1])
-                pivotAngle = math.atan2(D.currentLocation[1]-D.pivot[1],D.currentLocation[0]-D.pivot[0])
-                rotatedLocation = (D.pivot[0] + distance*math.cos(
-                                       pivotAngle+math.radians(D.thetaOffset+D.thetaDiff)),
-                                     D.pivot[1] + distance*math.sin(
-                                       pivotAngle+math.radians(D.thetaOffset+D.thetaDiff)),
-                                     thetaDisplay)
-                D.currentLocation = rotatedLocation
             D.recentMove = not (D.previousLocation and D.previousLocation[0:1] == D.currentLocation[0:1])
             if D.makeTrail and D.recentMove:
                 D.trail.append(D.currentLocation)
@@ -851,6 +859,7 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaOffsetField.setText(str(D.thetaOffset))
         self.erase_trail()
         self.erase_mcl()
+        D.pivot = (D.xPrevious,D.yPrevious)
 
     @Slot()
     def theta_offset_set(self):
@@ -861,7 +870,7 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaOffsetSlider.blockSignals(False)
         self.erase_trail()
         self.erase_mcl()
-        D.pivot = ()
+        D.pivot = (D.xPrevious,D.yPrevious)
 
     # light threshold setters
     @Slot()
@@ -1040,6 +1049,9 @@ class RobotBox(QtGui.QMainWindow):
 def sensor_callback( data ):
     """ sensor_callback is called for each sensorPacket message """
     global D
+
+    D.xPrevious = D.x
+    D.yPrevious = D.y
 
     D.chargeLevel = str(int(round(data.chargeLevel * 100))) + '%'
 
