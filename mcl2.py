@@ -93,7 +93,7 @@ D.pivot = ()
 D.sensors = [0,0,0,0]
 # user-input thresholds
 # feel free to change these default values to whatever you need
-D.lowerThresholds = [80,85,135,140] # change later
+D.lowerThresholds = [75,80,130,135]
 D.upperThresholds = [400,400,400,400]
 # just because
 D.chargeLevel = ""
@@ -103,7 +103,7 @@ D.chargeLevel = ""
 D.numParticles = int(D.width*D.height*0.01)
 # mcl resampled points noise
 D.xyNoise = 3.0
-D.thetaNoise = 2.5
+D.thetaNoise = 2.5 # currently unused
 # use special particle coloring?
 D.particleColoring = False
 
@@ -802,8 +802,8 @@ class RobotBox(QtGui.QMainWindow):
                         painter.drawEllipse(QtCore.QPoint(p[0], p[1]), 
                           particleRadius, particleRadius)
                 else:
-                    painter.setPen(QtGui.QColor("darkBlue"))
-                    painter.setBrush(QtGui.QColor("darkBlue"))
+                    painter.setPen(QtGui.QColor("darkGray"))
+                    painter.setBrush(QtGui.QColor("darkGray"))
                     for p in D.particles:
                         painter.drawEllipse(QtCore.QPoint(p[0], p[1]), 
                           particleRadius, particleRadius)
@@ -828,11 +828,12 @@ class RobotBox(QtGui.QMainWindow):
             # drawing robot location and pointer
             if D.showRobot:
                 markerRadius = 8
-                painter.setPen(QtGui.QColor("cyan"))
-                painter.setBrush(QtGui.QColor("cyan"))
+                painter.setPen(QtGui.QColor("black"))
+                painter.setBrush(QtGui.QColor("lightGray"))
                 painter.drawEllipse(
                   QtCore.QPoint(D.currentLocation[0],D.currentLocation[1]),
                   markerRadius, markerRadius)
+                painter.setPen(QtGui.QColor("red"))
                 distanceFromMarker = markerRadius + 3
                 pointerLength = 8
                 xDistance = distanceFromMarker*math.sin(
@@ -896,9 +897,6 @@ class RobotBox(QtGui.QMainWindow):
     def num_particles_set(self):
         """receives editingFinished signal from numParticlesField"""
         D.numParticles = int(self.numParticlesField.text())
-        self.numParticlesSlider.blockSignals(True)
-        self.numParticlesSlider.setSliderPosition(D.numParticles)
-        self.numParticlesSlider.blockSignals(False)
 
     @Slot()
     def particle_coloring_change(self):
@@ -1010,7 +1008,7 @@ class RobotBox(QtGui.QMainWindow):
     # image changers
     @Slot()
     def save_image(self):
-        """receives click signal from saveButton """
+        """receives click signal from saveButton"""
         dialog = QtGui.QFileDialog(self)
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         dialog.setViewMode(QtGui.QFileDialog.Detail)
@@ -1029,7 +1027,7 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def open_image(self):
-        """receives click signal from openButton """
+        """receives click signal from openButton"""
         toLoad = QtGui.QImage()
         dialog = QtGui.QFileDialog(self)
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
@@ -1060,7 +1058,7 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def clear_image(self):
-        """receives click signal from clearButton """
+        """receives click signal from clearButton"""
         D.width = DEFAULT_SIZE
         D.height = DEFAULT_SIZE
         D.whiteLines = []
@@ -1088,51 +1086,51 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def show_trail(self):
-        """receives click signal from showTrailButton """
+        """receives click signal from showTrailButton"""
         self.eraseTrailButton.setEnabled(True)
         D.makeTrail = 2
 
     @Slot()
     def hide_trail(self):
-        """receives click signal from hideTrailButton """
+        """receives click signal from hideTrailButton"""
         self.eraseTrailButton.setEnabled(True)
         D.makeTrail = 1
 
     @Slot()
     def no_trail(self):
-        """receives click signal from noTrailButton """
+        """receives click signal from noTrailButton"""
         self.erase_trail()
         self.eraseTrailButton.setEnabled(False)
         D.makeTrail = 0
 
     @Slot()
     def erase_trail(self):
-        """receives click signal from eraseButton """
+        """receives click signal from eraseButton"""
         D.trail = []
         #self.statusBar().showMessage("Erased trail", 3000)
 
     @Slot()
     def show_mcl(self):
-        """receives click signal from showMCLButton """
+        """receives click signal from showMCLButton"""
         self.eraseMCLButton.setEnabled(True)
         D.makeMCL = 2
 
     @Slot()
     def hide_mcl(self):
-        """receives click signal from hideMCLButton """
+        """receives click signal from hideMCLButton"""
         self.eraseMCLButton.setEnabled(True)
         D.makeMCL = 1
 
     @Slot()
     def no_mcl(self):
-        """receives click signal from noMCLButton """
+        """receives click signal from noMCLButton"""
         self.erase_mcl()
         self.eraseMCLButton.setEnabled(False)
         D.makeMCL = 0
 
     @Slot()
     def erase_mcl(self):
-        """receives click signal from eraseButton """
+        """receives click signal from eraseButton"""
         D.particles = []
         D.probabilities = []
         #self.statusBar().showMessage("Erased MCL particles", 3000)
@@ -1141,7 +1139,7 @@ class RobotBox(QtGui.QMainWindow):
     # easy but lazy
     @Slot()
     def x_reset(self):
-        """receives click signal from xResetButton """
+        """receives click signal from xResetButton"""
         D.xDiff = D.x
         self.erase_trail()
         self.erase_mcl()
@@ -1150,7 +1148,7 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def y_reset(self):
-        """receives click signal from yResetButton """
+        """receives click signal from yResetButton"""
         D.yDiff = D.y
         self.erase_trail()
         self.erase_mcl()
@@ -1159,7 +1157,7 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def theta_reset(self):
-        """receives click signal from thetaResetButton """
+        """receives click signal from thetaResetButton"""
         D.thetaDiff = D.theta
         self.erase_trail()
         self.erase_mcl()
@@ -1169,14 +1167,14 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def all_reset(self):
-        """receives click signal from allResetButton """
+        """receives click signal from allResetButton"""
         self.x_reset()
         self.y_reset()
         self.theta_reset()
 
 
 def sensor_callback( data ):
-    """sensor_callback is called for each sensorPacket message """
+    """sensor_callback is called for each sensorPacket message"""
     global D
 
     D.xPrevious = D.x
