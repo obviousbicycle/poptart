@@ -65,13 +65,6 @@ D.trail = []
 # sense for MCL to depend on trails being on anyway
 D.currentLocation = ()
 D.previousLocation = ()
-# list of white points on image representing white lines on floor
-D.whiteLines = []
-# list of black points on image representing black lines on floor
-D.blackLines = []
-# holds MCL particles and respective probabilities
-D.particles = []
-D.probabilities = []
 # true if the robot has moved since last GUI update
 D.recentMove = False
 
@@ -102,10 +95,17 @@ D.chargeLevel = ""
 # how many points in mcl
 D.numParticles = int(D.width*D.height*0.01)
 # mcl resampled points noise
-D.xyNoise = 3.0
-D.thetaNoise = 2.5 # currently unused
+D.xyNoise = 2.0
+D.thetaNoise = 1.0 # currently unused
 # use special particle coloring?
 D.particleColoring = False
+# list of white points on image representing white lines on floor
+D.whiteLines = []
+# list of black points on image representing black lines on floor
+D.blackLines = []
+# holds MCL particles and respective probabilities
+D.particles = []
+D.probabilities = []
 
 
 # The whole GUI is in this class
@@ -518,6 +518,19 @@ class RobotBox(QtGui.QMainWindow):
         ###
         mclGroup = QtGui.QWidget(self)
 
+        # number of particles
+        numParticlesLabel = QtGui.QLabel(self)
+        numParticlesLabel.setText("# particles")
+        numParticlesUsageLabel = QtGui.QLabel(self)
+        numParticlesUsageLabel.setText("Erase current particles to update")
+        # input field
+        self.numParticlesField = QtGui.QLineEdit(str(D.numParticles))
+        self.numParticlesField.editingFinished.connect(self.num_particles_set)
+        numParticlesMax = D.width*D.height
+        numParticlesValidator = QtGui.QIntValidator(1, numParticlesMax, self)
+        self.numParticlesField.setValidator(numParticlesValidator)
+        self.numParticlesField.setMaxLength(len(str(numParticlesMax)))
+
         # xy noise
         # apparently sliders only accept integer values??
         xyNoiseLabel = QtGui.QLabel(self)
@@ -558,19 +571,6 @@ class RobotBox(QtGui.QMainWindow):
         self.thetaNoiseSlider.setValue(10*D.thetaNoise)
         self.thetaNoiseSlider.valueChanged.connect(self.theta_noise_change)
 
-        # number of particles
-        numParticlesLabel = QtGui.QLabel(self)
-        numParticlesLabel.setText("# particles")
-        numParticlesUsageLabel = QtGui.QLabel(self)
-        numParticlesUsageLabel.setText("Erase current particles to update")
-        # input field
-        self.numParticlesField = QtGui.QLineEdit(str(D.numParticles))
-        self.numParticlesField.editingFinished.connect(self.num_particles_set)
-        numParticlesMax = D.width*D.height
-        numParticlesValidator = QtGui.QIntValidator(1, numParticlesMax, self)
-        self.numParticlesField.setValidator(numParticlesValidator)
-        self.numParticlesField.setMaxLength(len(str(numParticlesMax)))
-
         # particle coloring
         self.particleColoringCheckbox = QtGui.QCheckBox(
           "Variable particle colors\n(may be slow)", self)
@@ -580,15 +580,15 @@ class RobotBox(QtGui.QMainWindow):
         # mclGroup layout
         mclLayout = QtGui.QGridLayout()
         mclGroup.setLayout(mclLayout)
-        mclLayout.addWidget(xyNoiseLabel, 3, 0)
-        mclLayout.addWidget(self.xyNoiseField, 3, 1)
-        mclLayout.addWidget(self.xyNoiseSlider, 4, 0, 1, 2)
-        mclLayout.addWidget(thetaNoiseLabel, 5, 0)
-        mclLayout.addWidget(self.thetaNoiseField, 5, 1)
-        mclLayout.addWidget(self.thetaNoiseSlider, 6, 0, 1, 2)
-        mclLayout.addWidget(numParticlesLabel, 7, 0)
-        mclLayout.addWidget(self.numParticlesField, 7, 1)
-        mclLayout.addWidget(numParticlesUsageLabel, 9, 0, 1, 2)
+        mclLayout.addWidget(numParticlesLabel, 3, 0)
+        mclLayout.addWidget(self.numParticlesField, 3, 1)
+        mclLayout.addWidget(numParticlesUsageLabel, 4, 0, 1, 2)
+        mclLayout.addWidget(xyNoiseLabel, 5, 0)
+        mclLayout.addWidget(self.xyNoiseField, 5, 1)
+        mclLayout.addWidget(self.xyNoiseSlider, 6, 0, 1, 2)
+        mclLayout.addWidget(thetaNoiseLabel, 7, 0)
+        mclLayout.addWidget(self.thetaNoiseField, 7, 1)
+        mclLayout.addWidget(self.thetaNoiseSlider, 8, 0, 1, 2)
         mclLayout.addWidget(self.particleColoringCheckbox, 10, 0, 1, 2)
         # spacing
         mclLayout.setColumnStretch(0, 1)
@@ -687,7 +687,7 @@ class RobotBox(QtGui.QMainWindow):
                     # of being the robot's actual location
                     D.probabilities = [1.0/D.numParticles 
                                        for i in xrange(D.numParticles)]
-                    # generate points with random x, y, theta
+                    # generate points with random x, y
                     for n in xrange(D.numParticles):
                         p = [random.randint(0, D.width-1),
                              random.randint(0, D.height-1)]
@@ -725,7 +725,7 @@ class RobotBox(QtGui.QMainWindow):
                                 math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
                                 for p in D.whiteLines
                                 ]
-                            oldProbs[index] *= 1/(1+min(toWhiteLine))
+                            oldProbs[index] *= 1/(1+0.5*min(toWhiteLine))
                         elif (D.blackLines and
                                 (D.sensors[0] <= D.lowerThresholds[0] or
                                  D.sensors[1] <= D.lowerThresholds[1] or
@@ -790,13 +790,14 @@ class RobotBox(QtGui.QMainWindow):
                         # the color of one point is based on how many
                         # other points are close to it, "close" here
                         # being defined very arbitrarily
-                        near = 5 # pixels
+                        near = 10 # pixels
                         numClosePoints = len(filter(
                           lambda q: near >= abs(q[0]-p[0]) and near >=
                           abs(q[1]-p[1]), D.particles))
-                        hue = 300*(1-numClosePoints/(len(D.particles)*0.25))
+                        hue = 300*(1-numClosePoints/(D.numParticles*0.75))
                         if hue < 0.0: hue = 0
-                        color = QtGui.QColor.fromHsv(hue,255,150)
+                        if hue > 300.0: hue = 300
+                        color = QtGui.QColor.fromHsv(hue,255,200)
                         painter.setPen(color)
                         painter.setBrush(color)
                         painter.drawEllipse(QtCore.QPoint(p[0], p[1]), 
@@ -833,7 +834,7 @@ class RobotBox(QtGui.QMainWindow):
                 painter.drawEllipse(
                   QtCore.QPoint(D.currentLocation[0],D.currentLocation[1]),
                   markerRadius, markerRadius)
-                painter.setPen(QtGui.QColor("red"))
+                painter.setPen(QtGui.QColor(0,255,0))
                 distanceFromMarker = markerRadius + 3
                 pointerLength = 8
                 xDistance = distanceFromMarker*math.sin(
