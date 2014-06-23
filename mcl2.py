@@ -620,7 +620,7 @@ class RobotBox(QtGui.QMainWindow):
         self.no_mcl()
 
     def redraw_callback(self):
-        """where the good stuff happens """
+        """where the good stuff happens"""
         global D
 
         self.imageLock.acquire()
@@ -682,15 +682,20 @@ class RobotBox(QtGui.QMainWindow):
             # calculating MCL particles
             # hold on to yer britches son cause this is one wild ride
             if D.makeMCL:
+                whiteExpected = 1000
+                blackExpected = 0
+                neutralExpected = 200
                 if not D.particles:
                     # initially, every point has an equal probability
                     # of being the robot's actual location
                     D.probabilities = [1.0/D.numParticles 
                                        for i in xrange(D.numParticles)]
-                    # generate points with random x, y
+                    # generate points with random x, y, and an
+                    # arbitrary expected light value
                     for n in xrange(D.numParticles):
                         p = [random.randint(0, D.width-1),
-                             random.randint(0, D.height-1)]
+                             random.randint(0, D.height-1),
+                             neutralExpected]
                         D.particles.append(p)
                 elif D.recentMove:
                     # from the most recent motion data, calculate how
@@ -713,53 +718,70 @@ class RobotBox(QtGui.QMainWindow):
                             # set their prob very low
                             oldProbs[index] = 0.000001
                         # sensing update
-                        # if IR readings exceed threshold, set
-                        # probabilities corresponding to distance
-                        # from image's white points
-                        if (D.whiteLines and 
-                                (D.sensors[0] >= D.upperThresholds[0] or
-                                 D.sensors[1] >= D.upperThresholds[1] or
-                                 D.sensors[2] >= D.upperThresholds[2] or
-                                 D.sensors[3] >= D.upperThresholds[3])):
-                            toWhiteLine = [
-                                math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
-                                for p in D.whiteLines
-                                ]
-                            oldProbs[index] *= 1/(1+0.5*min(toWhiteLine))
-                        elif (D.blackLines and
-                                (D.sensors[0] <= D.lowerThresholds[0] or
-                                 D.sensors[1] <= D.lowerThresholds[1] or
-                                 D.sensors[2] <= D.lowerThresholds[2] or
-                                 D.sensors[3] <= D.lowerThresholds[3])):
-                            toBlackLine = [
-                                math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
-                                for p in D.blackLines
-                                ]
-                            oldProbs[index] *= 1/(1+min(toBlackLine))
+                        if D.whiteLines and D.blackLines:
+                            # change expected light accordingly
+                            if oldPt in D.whiteLines:
+                                oldPt[2] = whiteExpected
+                            elif oldPt in D.blackLines:
+                                oldPt[2] = blackExpected
+                            else:
+                                oldPt[2] = neutralExpected
+                            # set probabilities depending on difference
+                            # between point's expected light and
+                            # robot's observed light
+                            lightDifference = map(
+                              lambda x: abs(x-oldPt[2]), D.sensors)
+                            
+
+                        # if (D.whiteLines and 
+                        #         (D.sensors[0] >= D.upperThresholds[0] or
+                        #          D.sensors[1] >= D.upperThresholds[1] or
+                        #          D.sensors[2] >= D.upperThresholds[2] or
+                        #          D.sensors[3] >= D.upperThresholds[3])):
+                        #     toWhiteLine = [
+                        #         math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
+                        #         for p in D.whiteLines
+                        #         ]
+                        #     oldProbs[index] *= 1/(1+0.5*min(toWhiteLine))
+                        # elif (D.blackLines and
+                        #         (D.sensors[0] <= D.lowerThresholds[0] or
+                        #          D.sensors[1] <= D.lowerThresholds[1] or
+                        #          D.sensors[2] <= D.lowerThresholds[2] or
+                        #          D.sensors[3] <= D.lowerThresholds[3])):
+                        #     toBlackLine = [
+                        #         math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
+                        #         for p in D.blackLines
+                        #         ]
+                        #     oldProbs[index] *= 1/(1+min(toBlackLine))
                         index += 1
-                    # begin populating new generation with copies
-                    # from old generation, based on the points'
-                    # probabilities
-                    newGen = []
-                    newProbs = []
                     sumProb = math.fsum(oldProbs)
-                    cumulativeProb = [math.fsum(oldProbs[i::-1]) for i in
-                                      xrange(len(D.particles))]
-                    counter = 0
-                    for n in xrange(len(D.particles)):
-                        # step approach
-                        newGen.append(oldGen[counter])
-                        newProbs.append(oldProbs[counter]/sumProb)
-                        while (n*sumProb/len(D.particles) >
-                                cumulativeProb[counter]):
-                            counter += 1
-                    # add some noise to each new point
-                    D.particles = map(lambda p: [
-                                        random.gauss(p[0],D.xyNoise),
-                                        random.gauss(p[1],D.xyNoise)
-                                        ],
-                                      newGen)
-                    D.probabilities = newProbs
+                    if sumProb <= 0.000001*D.numParticles:
+                        # if all the points are very unlikely, just
+                        # start over with a new set of points
+                        D.particles = []
+                    else:
+                        # begin populating new generation with copies
+                        # from old generation, based on the points'
+                        # probabilities
+                        newGen = []
+                        newProbs = []
+                        cumulativeProb = [math.fsum(oldProbs[i::-1]) for i in
+                                          xrange(len(D.particles))]
+                        counter = 0
+                        for n in xrange(len(D.particles)):
+                            # step approach
+                            newGen.append(oldGen[counter])
+                            newProbs.append(oldProbs[counter]/sumProb)
+                            while (n*sumProb/len(D.particles) >
+                                    cumulativeProb[counter]):
+                                counter += 1
+                        # add some noise to each new point
+                        D.particles = map(lambda p: [
+                                            random.gauss(p[0],D.xyNoise),
+                                            random.gauss(p[1],D.xyNoise)
+                                            ],
+                                          newGen)
+                        D.probabilities = newProbs
 
             # time to draw
             painter = QtGui.QPainter()
