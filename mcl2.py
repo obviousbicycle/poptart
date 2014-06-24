@@ -729,9 +729,10 @@ class RobotBox(QtGui.QMainWindow):
                             # set probabilities depending on difference
                             # between point's expected light and
                             # robot's observed light
-                            lightDifference = map(
-                              lambda x: abs(x-oldPt[2]), D.sensors)
-                            
+                            lightDifference = max(map(
+                              lambda x: abs(x-oldPt[2]), D.sensors))
+                            if lightDifference < 1: lightDifference = 1
+                            oldProbs[index] *= 1.0/lightDifference
 
                         # if (D.whiteLines and 
                         #         (D.sensors[0] >= D.upperThresholds[0] or
