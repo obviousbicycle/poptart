@@ -3,7 +3,8 @@
 # A window displaying the Create's movements based on its odometry
 
 # Import the ROS libraries, and load the manifest file which through
-# <depend package=... /> will give us access to the project dependencies
+# <depend package=... /> will give us access to the project
+# dependencies
 import roslib; roslib.load_manifest('irobot_mudd')
 import rospy
 
@@ -13,17 +14,15 @@ from std_msgs.msg import String
 from irobot_mudd.srv import *
 from irobot_mudd.msg import *
 
-# We need to use resource locking to handle synchronization between GUI thread
-# and ROS topic callbacks
+# We need to use resource locking to handle synchronization between GUI
+# thread and ROS topic callbacks
 from threading import Lock
 
 # The GUI libraries
 from PySide import QtCore, QtGui
 from PySide.QtCore import Signal, Slot
-import cv2
 
 # General mathy stuff
-import numpy as np
 import random
 import time
 import math
@@ -60,9 +59,6 @@ D.thetaOffset = 0
 # list of points where robot was during a GUI update
 D.trail = []
 # pixel coordinates of robot
-# as far as I can tell, MCL only needs the current location and the
-# previous location, not all of D.trail, and it doesn't make a lot of
-# sense for MCL to depend on trails being on anyway
 D.currentLocation = ()
 D.previousLocation = ()
 # true if the robot has moved since last GUI update
@@ -105,7 +101,6 @@ D.whiteLines = []
 D.blackLines = []
 # holds MCL particles and respective probabilities
 D.particles = []
-D.probabilities = []
 
 
 # The whole GUI is in this class
@@ -686,16 +681,15 @@ class RobotBox(QtGui.QMainWindow):
                 blackExpected = 0
                 neutralExpected = 200
                 if not D.particles:
-                    # initially, every point has an equal probability
-                    # of being the robot's actual location
-                    D.probabilities = [1.0/D.numParticles 
-                                       for i in xrange(D.numParticles)]
                     # generate points with random x, y, and an
                     # arbitrary expected light value
+                    # initially, every point has an equal probability
+                    # of being the robot's actual location
                     for n in xrange(D.numParticles):
                         p = [random.randint(0, D.width-1),
                              random.randint(0, D.height-1),
-                             neutralExpected]
+                             neutralExpected,
+                             1.0/D.numParticles]
                         D.particles.append(p)
                 elif D.recentMove:
                     # from the most recent motion data, calculate how
@@ -703,8 +697,21 @@ class RobotBox(QtGui.QMainWindow):
                     difference = (D.currentLocation[0]-D.previousLocation[0],
                                   D.currentLocation[1]-D.previousLocation[1])
                     oldGen = D.particles
-                    oldProbs = D.probabilities
-                    index = 0
+                    # find the points closest to white/black lines
+                    # sort the list of particles by how close they are
+                    # to the nearest white point
+                    if D.whiteLines:
+                        closeToWhite = D.particles[:]
+                        closeToWhite.sort(
+                          key=lambda p: min([math.hypot(p[0]-w[0],p[1]-w[1]) 
+                            for w in D.whiteLines]))
+                        del closeToWhite[int(0.01*D.numParticles)+1:]
+                    if D.blackLines:
+                        closeToBlack = D.particles[:]
+                        closeToBlack.sort(
+                          key=lambda p: min([math.hypot(p[0]-b[0],p[1]-b[1]) 
+                            for b in D.blackLines]))
+                        del closeToBlack[int(0.01*D.numParticles)+1:]
                     for oldPt in oldGen:
                         # motion update
                         # apply robot's x and y change to particles
@@ -716,23 +723,27 @@ class RobotBox(QtGui.QMainWindow):
                             # killed particles unlikely to
                             # represent actual location, so we
                             # set their prob very low
-                            oldProbs[index] = 0.000001
+                            oldPt[-1] = 0.000001
                         # sensing update
-                        if D.whiteLines and D.blackLines:
-                            # change expected light accordingly
-                            if oldPt in D.whiteLines:
+                        if closeToWhite or closeToBlack:
+                            if oldPt in closeToWhite:
                                 oldPt[2] = whiteExpected
-                            elif oldPt in D.blackLines:
+                            elif oldPt in closeToBlack:
                                 oldPt[2] = blackExpected
                             else:
                                 oldPt[2] = neutralExpected
                             # set probabilities depending on difference
                             # between point's expected light and
                             # robot's observed light
+                            # points very different from observed white
+                            # are penalized more heavily than if robot
+                            # observed black
+                            observed = max(D.sensors)
+
                             lightDifference = max(map(
-                              lambda x: abs(x-oldPt[2]), D.sensors))
+                              lambda x: abs(x-oldPt[2]), D.sensors))/100.0
                             if lightDifference < 1: lightDifference = 1
-                            oldProbs[index] *= 1.0/lightDifference
+                            oldPt[-1] *= 1.0/lightDifference
 
                         # if (D.whiteLines and 
                         #         (D.sensors[0] >= D.upperThresholds[0] or
@@ -754,9 +765,9 @@ class RobotBox(QtGui.QMainWindow):
                         #         for p in D.blackLines
                         #         ]
                         #     oldProbs[index] *= 1/(1+min(toBlackLine))
-                        index += 1
+                    oldProbs = [p[-1] for p in oldGen]
                     sumProb = math.fsum(oldProbs)
-                    if sumProb <= 0.000001*D.numParticles:
+                    if sumProb <= 0.0001:
                         # if all the points are very unlikely, just
                         # start over with a new set of points
                         D.particles = []
@@ -767,22 +778,22 @@ class RobotBox(QtGui.QMainWindow):
                         newGen = []
                         newProbs = []
                         cumulativeProb = [math.fsum(oldProbs[i::-1]) for i in
-                                          xrange(len(D.particles))]
+                                          xrange(len(oldProbs))]
                         counter = 0
                         for n in xrange(len(D.particles)):
                             # step approach
                             newGen.append(oldGen[counter])
-                            newProbs.append(oldProbs[counter]/sumProb)
                             while (n*sumProb/len(D.particles) >
                                     cumulativeProb[counter]):
                                 counter += 1
                         # add some noise to each new point
                         D.particles = map(lambda p: [
                                             random.gauss(p[0],D.xyNoise),
-                                            random.gauss(p[1],D.xyNoise)
+                                            random.gauss(p[1],D.xyNoise),
+                                            p[2],
+                                            p[-1]/sumProb
                                             ],
                                           newGen)
-                        D.probabilities = newProbs
 
             # time to draw
             painter = QtGui.QPainter()
@@ -1057,7 +1068,7 @@ class RobotBox(QtGui.QMainWindow):
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
         dialog.setViewMode(QtGui.QFileDialog.Detail)
         fname, _ = dialog.getOpenFileName(
-          self, "Open image (must be black with white features)",
+          self, "Open image (features must be black and/or white)",
           "/home/robotics/Desktop/", "*.png")
         if toLoad.load(fname):
             D.width = toLoad.width()
