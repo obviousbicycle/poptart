@@ -717,25 +717,19 @@ class RobotBox(QtGui.QMainWindow):
                         # probabilities corresponding to distance
                         # from image's white points
                         if (D.whiteLines and 
-                                (D.sensors[0] >= D.upperThresholds[0] or
-                                 D.sensors[1] >= D.upperThresholds[1] or
-                                 D.sensors[2] >= D.upperThresholds[2] or
-                                 D.sensors[3] >= D.upperThresholds[3])):
+                                 D.sensors[1] >= D.upperThresholds[1]):
                             toWhiteLine = [
                                 math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
                                 for p in D.whiteLines
                                 ]
-                            oldProbs[index] *= 1/(1+0.5*min(toWhiteLine))
-                        elif (D.blackLines and
-                                (D.sensors[0] <= D.lowerThresholds[0] or
-                                 D.sensors[1] <= D.lowerThresholds[1] or
-                                 D.sensors[2] <= D.lowerThresholds[2] or
-                                 D.sensors[3] <= D.lowerThresholds[3])):
-                            toBlackLine = [
-                                math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
-                                for p in D.blackLines
-                                ]
-                            oldProbs[index] *= 1/(1+min(toBlackLine))
+                            oldProbs[index] *= 1/(1+math.sqrt(min(toWhiteLine)))
+                        # elif (D.blackLines and
+                        #          D.sensors[1] <= D.lowerThresholds[1]):
+                        #     toBlackLine = [
+                        #         math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
+                        #         for p in D.blackLines
+                        #         ]
+                        #     oldProbs[index] *= 1/(1+min(toBlackLine))
                         index += 1
                     # begin populating new generation with copies
                     # from old generation, based on the points'
