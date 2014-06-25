@@ -677,8 +677,8 @@ class RobotBox(QtGui.QMainWindow):
             # calculating MCL particles
             # hold on to yer britches son cause this is one wild ride
             if D.makeMCL:
-                whiteExpected = 1000
-                blackExpected = 0
+                whiteExpected = 400
+                blackExpected = 150
                 neutralExpected = 200
                 if not D.particles:
                     # generate points with random x, y, and an
@@ -701,17 +701,9 @@ class RobotBox(QtGui.QMainWindow):
                     # sort the list of particles by how close they are
                     # to the nearest white point
                     if D.whiteLines:
-                        closeToWhite = D.particles[:]
-                        closeToWhite.sort(
-                          key=lambda p: min([math.hypot(p[0]-w[0],p[1]-w[1]) 
-                            for w in D.whiteLines]))
-                        del closeToWhite[int(0.01*D.numParticles)+1:]
+                        closeToWhite = filter(lambda p: min([math.hypot(p[0]-w[0],p[1]-w[1]) for w in D.whiteLines])<=3, D.particles)
                     if D.blackLines:
-                        closeToBlack = D.particles[:]
-                        closeToBlack.sort(
-                          key=lambda p: min([math.hypot(p[0]-b[0],p[1]-b[1]) 
-                            for b in D.blackLines]))
-                        del closeToBlack[int(0.01*D.numParticles)+1:]
+                        closeToBlack = filter(lambda p: min([math.hypot(p[0]-b[0],p[1]-b[1]) for b in D.blackLines])<=3, D.particles)
                     for oldPt in oldGen:
                         # motion update
                         # apply robot's x and y change to particles
@@ -735,15 +727,16 @@ class RobotBox(QtGui.QMainWindow):
                             # set probabilities depending on difference
                             # between point's expected light and
                             # robot's observed light
-                            # points very different from observed white
-                            # are penalized more heavily than if robot
-                            # observed black
-                            observed = max(D.sensors)
-
-                            lightDifference = max(map(
-                              lambda x: abs(x-oldPt[2]), D.sensors))/100.0
-                            if lightDifference < 1: lightDifference = 1
-                            oldPt[-1] *= 1.0/lightDifference
+                            if D.sensors[1] >= 400:
+                                if oldPt[2] == blackExpected:
+                                    oldPt[-1] *= 0.1
+                                elif oldPt[2] == neutralExpected:
+                                    oldPt[-1] *= 0.5
+                            else:
+                                if oldPt[2] == whiteExpected:
+                                    oldPt[-1] *= 0.3
+                                elif oldPt[2] == blackExpected:
+                                    oldPt[-1] *= 0.7
 
                         # if (D.whiteLines and 
                         #         (D.sensors[0] >= D.upperThresholds[0] or
