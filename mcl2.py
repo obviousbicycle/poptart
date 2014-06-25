@@ -697,13 +697,6 @@ class RobotBox(QtGui.QMainWindow):
                     difference = (D.currentLocation[0]-D.previousLocation[0],
                                   D.currentLocation[1]-D.previousLocation[1])
                     oldGen = D.particles
-                    # find the points closest to white/black lines
-                    # sort the list of particles by how close they are
-                    # to the nearest white point
-                    if D.whiteLines:
-                        closeToWhite = filter(lambda p: min([math.hypot(p[0]-w[0],p[1]-w[1]) for w in D.whiteLines])<=3, D.particles)
-                    if D.blackLines:
-                        closeToBlack = filter(lambda p: min([math.hypot(p[0]-b[0],p[1]-b[1]) for b in D.blackLines])<=3, D.particles)
                     for oldPt in oldGen:
                         # motion update
                         # apply robot's x and y change to particles
@@ -716,7 +709,15 @@ class RobotBox(QtGui.QMainWindow):
                             # represent actual location, so we
                             # set their prob very low
                             oldPt[-1] = 0.000001
-                        # sensing update
+                    # sensing update
+                    # find the points closest to white/black lines
+                    # sort the list of particles by how close they are
+                    # to the nearest white point
+                    if D.whiteLines:
+                        closeToWhite = filter(lambda p: min([math.hypot(p[0]-w[0],p[1]-w[1]) for w in D.whiteLines]) <= 4, D.particles)
+                    if D.blackLines:
+                        closeToBlack = filter(lambda p: min([math.hypot(p[0]-b[0],p[1]-b[1]) for b in D.blackLines]) <= 4, D.particles)
+                    for oldPt in oldGen:
                         if closeToWhite or closeToBlack:
                             if oldPt in closeToWhite:
                                 oldPt[2] = whiteExpected
@@ -731,10 +732,10 @@ class RobotBox(QtGui.QMainWindow):
                                 if oldPt[2] == blackExpected:
                                     oldPt[-1] *= 0.1
                                 elif oldPt[2] == neutralExpected:
-                                    oldPt[-1] *= 0.5
+                                    oldPt[-1] *= 0.3
                             else:
                                 if oldPt[2] == whiteExpected:
-                                    oldPt[-1] *= 0.3
+                                    oldPt[-1] *= 0.5
                                 elif oldPt[2] == blackExpected:
                                     oldPt[-1] *= 0.7
 
