@@ -90,8 +90,8 @@ D.chargeLevel = ""
 # MCL-exclusive globals
 # how many points in mcl
 D.numParticles = int(D.width*D.height*0.01)
-# mcl resampled points noise
-D.xyNoise = 2.0
+# mcl resampled points noise - standard deviation of random gaussian
+D.xyNoise = 1.5
 D.thetaNoise = 1.0 # currently unused
 # use special particle coloring?
 D.particleColoring = False
@@ -711,8 +711,6 @@ class RobotBox(QtGui.QMainWindow):
                             oldPt[-1] = 0.000001
                     # sensing update
                     # find the points closest to white/black lines
-                    # sort the list of particles by how close they are
-                    # to the nearest white point
                     if D.whiteLines:
                         closeToWhite = filter(lambda p: min([math.hypot(p[0]-w[0],p[1]-w[1]) for w in D.whiteLines]) <= 4, D.particles)
                     if D.blackLines:
@@ -732,33 +730,12 @@ class RobotBox(QtGui.QMainWindow):
                                 if oldPt[2] == blackExpected:
                                     oldPt[-1] *= 0.1
                                 elif oldPt[2] == neutralExpected:
-                                    oldPt[-1] *= 0.3
+                                    oldPt[-1] *= 0.75
                             else:
                                 if oldPt[2] == whiteExpected:
-                                    oldPt[-1] *= 0.5
+                                    oldPt[-1] *= 0.75
                                 elif oldPt[2] == blackExpected:
                                     oldPt[-1] *= 0.7
-
-                        # if (D.whiteLines and 
-                        #         (D.sensors[0] >= D.upperThresholds[0] or
-                        #          D.sensors[1] >= D.upperThresholds[1] or
-                        #          D.sensors[2] >= D.upperThresholds[2] or
-                        #          D.sensors[3] >= D.upperThresholds[3])):
-                        #     toWhiteLine = [
-                        #         math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
-                        #         for p in D.whiteLines
-                        #         ]
-                        #     oldProbs[index] *= 1/(1+0.5*min(toWhiteLine))
-                        # elif (D.blackLines and
-                        #         (D.sensors[0] <= D.lowerThresholds[0] or
-                        #          D.sensors[1] <= D.lowerThresholds[1] or
-                        #          D.sensors[2] <= D.lowerThresholds[2] or
-                        #          D.sensors[3] <= D.lowerThresholds[3])):
-                        #     toBlackLine = [
-                        #         math.hypot(oldPt[0]-p[0],oldPt[1]-p[1])
-                        #         for p in D.blackLines
-                        #         ]
-                        #     oldProbs[index] *= 1/(1+min(toBlackLine))
                     oldProbs = [p[-1] for p in oldGen]
                     sumProb = math.fsum(oldProbs)
                     if sumProb <= 0.0001:
