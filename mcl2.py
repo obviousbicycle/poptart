@@ -742,12 +742,20 @@ class RobotBox(QtGui.QMainWindow):
                     counter = 0
                     for n in xrange(len(D.particles)):
                         # step approach
+                        # newGen.append(oldGen[counter])
+                        # newProbs.append(oldProbs[counter]/sumProb)
+                        # while (n*sumProb/len(D.particles) >
+                        #         cumulativeProb[counter]):
+                        #     counter += 1
+                        newProb = random.uniform(0, sumProb)
+                        counter = 0
+                        cumulativeProb = oldProbs[0]
+                        while newProb > cumulativeProb:
+                            counter += 1
+                            cumulativeProb += oldProbs[counter]
                         newGen.append(oldGen[counter])
                         newProbs.append(oldProbs[counter]/sumProb)
-                        while (n*sumProb/len(D.particles) >
-                                cumulativeProb[counter]):
-                            counter += 1
-                    # add some noise to each new point
+                # add some noise to each new point
                     D.particles = map(lambda p: [
                                         random.gauss(p[0],D.xyNoise),
                                         random.gauss(p[1],D.xyNoise)
