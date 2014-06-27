@@ -730,10 +730,10 @@ class RobotBox(QtGui.QMainWindow):
                                 if oldPt[2] == blackExpected:
                                     oldPt[-1] *= 0.1
                                 elif oldPt[2] == neutralExpected:
-                                    oldPt[-1] *= 0.75
+                                    oldPt[-1] *= 0.7
                             else:
                                 if oldPt[2] == whiteExpected:
-                                    oldPt[-1] *= 0.75
+                                    oldPt[-1] *= 0.3
                                 elif oldPt[2] == blackExpected:
                                     oldPt[-1] *= 0.7
                     oldProbs = [p[-1] for p in oldGen]
@@ -753,16 +753,17 @@ class RobotBox(QtGui.QMainWindow):
                         counter = 0
                         for n in xrange(len(D.particles)):
                             # step approach
-                            newGen.append(oldGen[counter])
+                            newGen.append(oldGen[counter][:-1])
                             while (n*sumProb/len(D.particles) >
                                     cumulativeProb[counter]):
                                 counter += 1
+                        newSumProb = math.fsum([p[-1] for p in newGen])
                         # add some noise to each new point
                         D.particles = map(lambda p: [
                                             random.gauss(p[0],D.xyNoise),
                                             random.gauss(p[1],D.xyNoise),
                                             p[2],
-                                            p[-1]/sumProb
+                                            p[-1]/newSumProb
                                             ],
                                           newGen)
 
