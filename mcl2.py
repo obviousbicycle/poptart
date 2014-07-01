@@ -30,8 +30,7 @@ import math
 
 # Some Constants
 GUI_UPDATE_PERIOD = 20 # ms
-USE_CM = True # set to True to use cm as main distance unit - and makes
-              # for funny-looking but technically correct code
+USE_CM = True # set to True to use cm as main distance unit
 SCALE = 1.0 # how many distance units for one pixel?
 WIDGET_SPACING = 10 # pixels of space between widgets
 DEFAULT_SIZE = 300 # side length of default image
@@ -40,31 +39,6 @@ DEFAULT_SIZE = 300 # side length of default image
 class Data: pass    # empty class for a generic data holder
 D = Data()  # an object to hold our system's services and state
 
-# visual-related globals
-# image dimensions
-D.width = DEFAULT_SIZE
-D.height = DEFAULT_SIZE
-# toggle various things for display purposes
-D.showRobot = True
-D.showAxes = False
-D.showGrid = False
-D.makeTrail = 0
-D.makeMCL = 0
-# robot marker offset in pixels
-D.xOffset = 0
-D.yOffset = 0
-D.thetaOffset = 0
-
-# location-related globals
-# list of points where robot was during a GUI update
-D.trail = []
-# pixel coordinates of robot
-D.currentLocation = ()
-D.previousLocation = ()
-# true if the robot has moved since last GUI update
-D.recentMove = False
-
-# odometry- and sensor-related globals
 # for various data
 # in (centi)meters/degrees
 D.x = 0.0
@@ -72,35 +46,32 @@ D.xPrevious = 0.0
 D.y = 0.0
 D.yPrevious = 0.0
 D.theta = 0.0
-# for "clearing" odometer
-D.xDiff = 0.0
-D.yDiff = 0.0
-D.thetaDiff = 0.0
-# for theta offset/reset purposes
-D.pivot = ()
+# why not
+D.chargeLevel = ""
 # IR light sensor data
 D.sensors = [0,0,0,0]
-# user-input thresholds
-# feel free to change these default values to whatever you need
-D.lowerThresholds = [75,80,130,135]
-D.upperThresholds = [400,400,400,400]
-# just because
-D.chargeLevel = ""
 
-# MCL-exclusive globals
-# how many points in mcl
-D.numParticles = int(D.width*D.height*0.01)
-# mcl resampled points noise - standard deviation of random gaussian
-D.xyNoise = 1.5
-D.thetaNoise = 1.0 # currently unused
-# use special particle coloring?
-D.particleColoring = False
-# list of white points on image representing white lines on floor
-D.whiteLines = []
-# list of black points on image representing black lines on floor
-D.blackLines = []
-# holds MCL particles and respective probabilities
-D.particles = []
+
+#class Sensor(): # later
+#    pass
+
+class Particle:
+    def __init__(self, x, y, theta, probability):
+        """Construct the generic MCL particle.
+
+        Keyword arguments:
+        x -- the x-coordinate of the particle on the image display
+        y -- the y-coordinate
+        theta -- the angle at which the particle would move forward,
+            relative to the horizontal
+        probability -- the probability that the robot's location
+            matches this particle's location
+        """
+        self.x = x
+        self.y = y
+        self.theta = theta
+        self.prob = probability
+        self.sensors = []
 
 
 # The whole GUI is in this class
@@ -108,6 +79,52 @@ class RobotBox(QtGui.QMainWindow):
     def __init__(self):
         # Construct the parent class
         super(RobotBox, self).__init__()
+
+        # Initialize data values related to visuals/drawing
+        # image dimensions
+        self.width = DEFAULT_SIZE
+        self.height = DEFAULT_SIZE
+        # toggle various things for display purposes
+        D.makeTrail = 0
+        D.makeMCL = 0
+        # robot marker offset in pixels
+        D.xOffset = 0
+        D.yOffset = 0
+        D.thetaOffset = 0
+
+        # Initialize data values related to location
+        # list of points where robot was during a GUI update
+        D.trail = []
+        # pixel coordinates of robot
+        D.currentLocation = ()
+        D.previousLocation = ()
+        # true if the robot has moved since last GUI update
+        D.recentMove = False
+
+        # odometry- and sensor-related globals
+        # for "clearing" odometer
+        D.xDiff = 0.0
+        D.yDiff = 0.0
+        D.thetaDiff = 0.0
+        # for theta offset/reset purposes
+        D.pivot = ()
+        # user-input thresholds
+        # feel free to change these default values to whatever you need
+        D.lowerThresholds = [75,80,130,135]
+        D.upperThresholds = [400,400,400,400]
+
+        # MCL-exclusive globals
+        # how many points in mcl
+        D.numParticles = int(self.width*self.height*0.01)
+        # mcl resampled points noise - standard deviation of random gaussian
+        D.xyNoise = 1.5
+        D.thetaNoise = 1.0 # currently unused
+        # list of white points on image representing white lines on floor
+        D.whiteLines = []
+        # list of black points on image representing black lines on floor
+        D.blackLines = []
+        # holds MCL particles and respective probabilities
+        D.particles = []
 
         # init each section of the main window
         self.init_menu()
@@ -128,7 +145,7 @@ class RobotBox(QtGui.QMainWindow):
         self.clearAction = QtGui.QAction("Clear image && map", self)
         self.clearAction.triggered.connect(self.clear_image)
 
-        self.fileMenu = self.menuBar().addMenu("Stuff")
+        self.fileMenu = self.menuBar().addMenu("File")
         self.fileMenu.addAction(self.saveAction)
         self.fileMenu.addAction(self.openAction)
         self.fileMenu.addAction(self.clearAction)
@@ -146,7 +163,8 @@ class RobotBox(QtGui.QMainWindow):
         # Holds the image frame received from the drone and later
         # processed by the GUI
         # currently unused whoops
-        self.image = QtGui.QImage(D.width,D.height,QtGui.QImage.Format_RGB888)
+        self.image = QtGui.QImage(
+            self.width, self.height, QtGui.QImage.Format_RGB888)
         self.image.fill(QtGui.QColor(0,0,0))
         self.imageLock = Lock()
 
@@ -327,9 +345,7 @@ class RobotBox(QtGui.QMainWindow):
         # border stretch
         lightLayout.setRowStretch(0, 1)
         lightLayout.setRowStretch(10, 1)
-        #lightLayout.setColumnStretch(4, 1)
         # spacing columns/rows
-        #lightLayout.setColumnMinimumWidth(0, WIDGET_SPACING)
         lightLayout.setRowMinimumHeight(2, WIDGET_SPACING)
         lightLayout.setRowMinimumHeight(4, WIDGET_SPACING)
         lightLayout.setRowMinimumHeight(6, WIDGET_SPACING) 
@@ -361,20 +377,11 @@ class RobotBox(QtGui.QMainWindow):
         ###
         displayGroup = QtGui.QWidget(self)
 
-        # robot marker
+        # checkboxes
         self.robotMarkerCheckbox = QtGui.QCheckBox("Robot marker", self)
-        self.robotMarkerCheckbox.stateChanged.connect(
-          self.robot_marker_change)
-
-        # Axes
+        self.robotMarkerCheckbox.setChecked(True)
         self.axesCheckbox = QtGui.QCheckBox("Axes", self)
-        self.axesCheckbox.stateChanged.connect(
-          self.axes_change)
-
-        # Grid
         self.gridCheckbox = QtGui.QCheckBox("Grid", self)
-        self.gridCheckbox.stateChanged.connect(
-          self.grid_change)
 
         # Trails
         trailLabel = QtGui.QLabel(self)
@@ -421,13 +428,13 @@ class RobotBox(QtGui.QMainWindow):
         displayLayout.addWidget(self.hideTrailButton, 4, 2)
         displayLayout.addWidget(self.noTrailButton, 4, 3)
         displayLayout.addWidget(self.eraseTrailButton, 5, 1, 1, 3,
-          QtCore.Qt.AlignLeft)
+                                QtCore.Qt.AlignLeft)
         displayLayout.addWidget(MCLLabel, 7, 1, 1, 2)
         displayLayout.addWidget(self.showMCLButton, 8, 1)
         displayLayout.addWidget(self.hideMCLButton, 8, 2)
         displayLayout.addWidget(self.noMCLButton, 8, 3)
         displayLayout.addWidget(self.eraseMCLButton, 9, 1, 1, 3,
-          QtCore.Qt.AlignLeft)
+                                QtCore.Qt.AlignLeft)
         # blank rows/columns for spacing between widgets
         displayLayout.setRowMinimumHeight(2, WIDGET_SPACING)
         displayLayout.setRowMinimumHeight(6, WIDGET_SPACING)
@@ -445,14 +452,15 @@ class RobotBox(QtGui.QMainWindow):
         # x input field
         self.xOffsetField = QtGui.QLineEdit(str(D.xOffset))
         self.xOffsetField.editingFinished.connect(self.x_offset_set)
-        xOffsetValidator = QtGui.QIntValidator(-D.width/2, D.width/2, self)
+        xOffsetValidator = QtGui.QIntValidator(
+            -self.width/2, self.width/2, self)
         self.xOffsetField.setValidator(xOffsetValidator)
         # x slider
         self.xOffsetSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.xOffsetSlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.xOffsetSlider.setMinimum(-D.width/2)
-        self.xOffsetSlider.setMaximum(D.width/2)
-        self.xOffsetSlider.setTickInterval(D.width/20)
+        self.xOffsetSlider.setMinimum(-self.width/2)
+        self.xOffsetSlider.setMaximum(self.width/2)
+        self.xOffsetSlider.setTickInterval(self.width/20)
         self.xOffsetSlider.setValue(0)
         self.xOffsetSlider.valueChanged.connect(self.x_offset_change)
 
@@ -462,14 +470,15 @@ class RobotBox(QtGui.QMainWindow):
         # y input field
         self.yOffsetField = QtGui.QLineEdit(str(D.yOffset))
         self.yOffsetField.editingFinished.connect(self.y_offset_set)
-        yOffsetValidator = QtGui.QIntValidator(-D.height/2, D.height/2, self)
+        yOffsetValidator = QtGui.QIntValidator(
+            -self.height/2, self.height/2, self)
         self.yOffsetField.setValidator(yOffsetValidator)
         # y slider
         self.yOffsetSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.yOffsetSlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.yOffsetSlider.setMinimum(-D.height/2)
-        self.yOffsetSlider.setMaximum(D.height/2)
-        self.yOffsetSlider.setTickInterval(D.height/20)
+        self.yOffsetSlider.setMinimum(-self.height/2)
+        self.yOffsetSlider.setMaximum(self.height/2)
+        self.yOffsetSlider.setTickInterval(self.height/20)
         self.yOffsetSlider.setValue(0)
         self.yOffsetSlider.valueChanged.connect(self.y_offset_change)
 
@@ -521,7 +530,7 @@ class RobotBox(QtGui.QMainWindow):
         # input field
         self.numParticlesField = QtGui.QLineEdit(str(D.numParticles))
         self.numParticlesField.editingFinished.connect(self.num_particles_set)
-        numParticlesMax = D.width*D.height
+        numParticlesMax = self.width*self.height
         numParticlesValidator = QtGui.QIntValidator(1, numParticlesMax, self)
         self.numParticlesField.setValidator(numParticlesValidator)
         self.numParticlesField.setMaxLength(len(str(numParticlesMax)))
@@ -569,8 +578,6 @@ class RobotBox(QtGui.QMainWindow):
         # particle coloring
         self.particleColoringCheckbox = QtGui.QCheckBox(
           "Variable particle colors\n(may be slow)", self)
-        self.particleColoringCheckbox.stateChanged.connect(
-          self.particle_coloring_change)
 
         # mclGroup layout
         mclLayout = QtGui.QGridLayout()
@@ -607,8 +614,7 @@ class RobotBox(QtGui.QMainWindow):
         
     def set_buttons(self):
         """sets initial button states"""
-        self.robotMarkerCheckbox.setChecked(True)
-        self.robot_marker_change()
+        
         self.noTrailButton.setChecked(True)
         self.no_trail()
         self.noMCLButton.setChecked(True)
@@ -624,9 +630,9 @@ class RobotBox(QtGui.QMainWindow):
             # it's always gray. features drawn later
             image = QtGui.QPixmap()
             image.convertFromImage(QtGui.QImage(
-              D.width,D.height,QtGui.QImage.Format_RGB888))
+              self.width,self.height,QtGui.QImage.Format_RGB888))
             image.fill(QtGui.QColor.fromHsv(240,63,127))
-            origin = (D.width/2, D.height/2)
+            origin = (self.width/2, self.height/2)
 
             # updating light sensor readings
             self.backLeftValue.setText(str(D.sensors[0]))
@@ -686,8 +692,8 @@ class RobotBox(QtGui.QMainWindow):
                     # initially, every point has an equal probability
                     # of being the robot's actual location
                     for n in xrange(D.numParticles):
-                        p = [random.randint(0, D.width-1),
-                             random.randint(0, D.height-1),
+                        p = [random.randint(0, self.width-1),
+                             random.randint(0, self.height-1),
                              neutralExpected,
                              1.0/D.numParticles]
                         D.particles.append(p)
@@ -703,8 +709,8 @@ class RobotBox(QtGui.QMainWindow):
                         oldPt[0] += difference[0]
                         oldPt[1] += difference[1]
                         # particles that move off-screen are killed
-                        if (oldPt[0] < 0 or oldPt[0] > D.width or
-                            oldPt[1] < 0 or oldPt[1] > D.height):
+                        if (oldPt[0] < 0 or oldPt[0] > self.width or
+                            oldPt[1] < 0 or oldPt[1] > self.height):
                             # killed particles unlikely to
                             # represent actual location, so we
                             # set their prob very low
@@ -771,26 +777,27 @@ class RobotBox(QtGui.QMainWindow):
             painter = QtGui.QPainter()
             painter.begin(image)
             # drawing axes
-            if D.showAxes:
+            if self.axesCheckbox.isChecked():
                 painter.setPen(QtGui.QColor.fromHsv(240,63,63))
                 painter.setBrush(QtGui.QColor.fromHsv(240,63,63))
-                painter.drawLine(D.width/2,0,D.width/2,D.height)
-                painter.drawLine(0,D.height/2,D.width,D.height/2)
+                painter.drawLine(self.width/2,0,self.width/2,self.height)
+                painter.drawLine(0,self.height/2,self.width,self.height/2)
             # drawing grid
-            if D.showGrid:
+            if self.gridCheckbox.isChecked():
                 spacing = 20
                 painter.setPen(QtGui.QColor.fromHsv(240,63,63))
                 painter.setBrush(QtGui.QColor.fromHsv(240,63,63))
                 # grid is centered on origin
-                for x in xrange((D.width/2)%spacing,D.width,spacing):
-                    for y in xrange((D.height/2)%spacing,D.height,spacing):
+                for x in xrange((self.width/2)%spacing, self.width, spacing):
+                    for y in xrange((self.height/2)%spacing, self.height,
+                                    spacing):
                         painter.drawEllipse(x,y,1,1)
             # drawing particles
             if D.makeMCL == 2:
                 particleRadius = 2
                 #distanceFromParticle = particleRadius+3
                 #particlePointerLength = 4
-                if D.particleColoring:
+                if self.particleColoringCheckbox.isChecked():
                     hue = 0
                     for p in D.particles:
                         # the color of one point is based on how many
@@ -833,12 +840,12 @@ class RobotBox(QtGui.QMainWindow):
                 for p in D.blackLines:
                     painter.drawPoint(p[0],p[1])
             # drawing robot location and pointer
-            if D.showRobot:
+            if self.robotMarkerCheckbox.isChecked():
                 markerRadius = 8
                 painter.setPen(QtGui.QColor("black"))
                 painter.setBrush(QtGui.QColor("lightGray"))
                 painter.drawEllipse(
-                  QtCore.QPoint(D.currentLocation[0],D.currentLocation[1]),
+                  QtCore.QPoint(D.currentLocation[0], D.currentLocation[1]),
                   markerRadius, markerRadius)
                 painter.setPen(QtGui.QColor(0,255,0))
                 distanceFromMarker = markerRadius + 3
@@ -847,10 +854,10 @@ class RobotBox(QtGui.QMainWindow):
                   math.radians(thetaDisplay+90.0))
                 yDistance = distanceFromMarker*math.cos(
                   math.radians(thetaDisplay+90.0))
-                xLength = (xDistance + pointerLength*math.sin(
-                  math.radians(thetaDisplay+90.0)))
-                yLength = (yDistance + pointerLength*math.cos(
-                  math.radians(thetaDisplay+90.0)))
+                xLength = xDistance + pointerLength*math.sin(
+                  math.radians(thetaDisplay+90.0))
+                yLength = yDistance + pointerLength*math.cos(
+                  math.radians(thetaDisplay+90.0))
                 pointer = QtCore.QLineF(xDistance+D.currentLocation[0],
                                         yDistance+D.currentLocation[1],
                                         xLength+D.currentLocation[0],
@@ -862,11 +869,10 @@ class RobotBox(QtGui.QMainWindow):
 
         # We could do more processing (eg OpenCV) here if we wanted
         # to, but for now let's just display the window.
-        self.resize(D.width,D.height)
+        self.resize(self.width,self.height)
         self.imageBox.setPixmap(image)
 
-        # Status bar displays charge level only when updating previous
-        # level or after a temporary message expires
+        # Status bar displays charge level by default
         if (not self.statusBar().currentMessage() or 
                 "Charge" in self.statusBar().currentMessage()):
             self.statusBar().showMessage("Charge: " + D.chargeLevel)
@@ -904,14 +910,6 @@ class RobotBox(QtGui.QMainWindow):
     def num_particles_set(self):
         """receives editingFinished signal from numParticlesField"""
         D.numParticles = int(self.numParticlesField.text())
-
-    @Slot()
-    def particle_coloring_change(self):
-        """receives stateChanged signal from
-        particleColoringCheckbox
-        """
-        D.particleColoring = (True if
-          self.particleColoringCheckbox.isChecked() else False)
 
     # offset changers
     @Slot()
@@ -974,48 +972,39 @@ class RobotBox(QtGui.QMainWindow):
     # light threshold setters
     @Slot()
     def back_left_lower_set(self):
-        """receives editingFinished signal from backLeftLowerField"""
         D.lowerThresholds[0] = int(self.backLeftLowerField.text())
 
     @Slot()
     def front_left_lower_set(self):
-        """receives editingFinished signal from frontLeftLowerField"""
         D.lowerThresholds[1] = int(self.frontLeftLowerField.text())
 
     @Slot()
     def front_right_lower_set(self):
-        """receives editingFinished signal from frontRightLowerField"""
         D.lowerThresholds[2] = int(self.frontRightLowerField.text())
 
     @Slot()
     def back_right_lower_set(self):
-        """receives editingFinished signal from backRightLowerField"""
         D.lowerThresholds[3] = int(self.backRightLowerField.text())
 
     @Slot()
     def back_left_upper_set(self):
-        """receives editingFinished signal from backLeftUpperField"""
         D.upperThresholds[0] = int(self.backLeftUpperField.text())
 
     @Slot()
     def front_left_upper_set(self):
-        """receives editingFinished signal from frontLeftUpperField"""
         D.upperThresholds[1] = int(self.frontLeftUpperField.text())
 
     @Slot()
     def front_right_upper_set(self):
-        """receives editingFinished signal from frontRightUpperField"""
         D.upperThresholds[2] = int(self.frontRightUpperField.text())
 
     @Slot()
     def back_right_upper_set(self):
-        """receives editingFinished signal from backRightUpperField"""
         D.upperThresholds[3] = int(self.backRightUpperField.text())
 
     # image changers
     @Slot()
     def save_image(self):
-        """receives click signal from saveButton"""
         dialog = QtGui.QFileDialog(self)
         dialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         dialog.setViewMode(QtGui.QFileDialog.Detail)
@@ -1034,7 +1023,6 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def open_image(self):
-        """receives click signal from openButton"""
         toLoad = QtGui.QImage()
         dialog = QtGui.QFileDialog(self)
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
@@ -1043,16 +1031,16 @@ class RobotBox(QtGui.QMainWindow):
           self, "Open image (features must be black and/or white)",
           "/home/robotics/Desktop/", "*.png")
         if toLoad.load(fname):
-            D.width = toLoad.width()
-            D.height = toLoad.height()
+            self.width = toLoad.width()
+            self.height = toLoad.height()
             D.whiteLines = []
             D.blackLines = []
             self.setWindowTitle('RobotBox - ' + fname)
             self.erase_trail()
             self.erase_mcl()
             # add black/white pixels to their lists
-            for x in xrange(D.width):
-                for y in xrange(D.height):
+            for x in xrange(self.width):
+                for y in xrange(self.height):
                     if (QtGui.QColor(toLoad.pixel(x,y)) ==
                             QtGui.QColor("white")):
                         D.whiteLines.append((x,y))
@@ -1065,9 +1053,8 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def clear_image(self):
-        """receives click signal from clearButton"""
-        D.width = DEFAULT_SIZE
-        D.height = DEFAULT_SIZE
+        self.width = DEFAULT_SIZE
+        self.height = DEFAULT_SIZE
         D.whiteLines = []
         D.blackLines = []
         self.setWindowTitle('RobotBox')
@@ -1076,77 +1063,47 @@ class RobotBox(QtGui.QMainWindow):
         self.statusBar().showMessage("Cleared image", 3000)
 
     @Slot()
-    def robot_marker_change(self):
-        """receives stateChanged signal from robotMarkerCheckbox"""
-        D.showRobot = (True if
-          self.robotMarkerCheckbox.isChecked() else False)
-
-    @Slot()
-    def axes_change(self):
-        """receives stateChanged signal from axesCheckbox"""
-        D.showAxes = (True if self.axesCheckbox.isChecked() else False)
-
-    @Slot()
-    def grid_change(self):
-        """receives stateChanged signal from gridCheckbox"""
-        D.showGrid = (True if self.gridCheckbox.isChecked() else False)
-
-    @Slot()
     def show_trail(self):
-        """receives click signal from showTrailButton"""
         self.eraseTrailButton.setEnabled(True)
         D.makeTrail = 2
 
     @Slot()
     def hide_trail(self):
-        """receives click signal from hideTrailButton"""
         self.eraseTrailButton.setEnabled(True)
         D.makeTrail = 1
 
     @Slot()
     def no_trail(self):
-        """receives click signal from noTrailButton"""
         self.erase_trail()
         self.eraseTrailButton.setEnabled(False)
         D.makeTrail = 0
 
     @Slot()
-    def erase_trail(self):
-        """receives click signal from eraseButton"""
-        D.trail = []
-        #self.statusBar().showMessage("Erased trail", 3000)
+    def erase_trail(self): D.trail = []
 
     @Slot()
     def show_mcl(self):
-        """receives click signal from showMCLButton"""
         self.eraseMCLButton.setEnabled(True)
         D.makeMCL = 2
 
     @Slot()
     def hide_mcl(self):
-        """receives click signal from hideMCLButton"""
         self.eraseMCLButton.setEnabled(True)
         D.makeMCL = 1
 
     @Slot()
     def no_mcl(self):
-        """receives click signal from noMCLButton"""
         self.erase_mcl()
         self.eraseMCLButton.setEnabled(False)
         D.makeMCL = 0
 
     @Slot()
-    def erase_mcl(self):
-        """receives click signal from eraseButton"""
-        D.particles = []
-        D.probabilities = []
-        #self.statusBar().showMessage("Erased MCL particles", 3000)
+    def erase_mcl(self): D.particles = []
 
     # position data resetters
     # easy but lazy
     @Slot()
     def x_reset(self):
-        """receives click signal from xResetButton"""
         D.xDiff = D.x
         self.erase_trail()
         self.erase_mcl()
@@ -1155,7 +1112,6 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def y_reset(self):
-        """receives click signal from yResetButton"""
         D.yDiff = D.y
         self.erase_trail()
         self.erase_mcl()
@@ -1164,7 +1120,6 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def theta_reset(self):
-        """receives click signal from thetaResetButton"""
         D.thetaDiff = D.theta
         self.erase_trail()
         self.erase_mcl()
@@ -1174,7 +1129,6 @@ class RobotBox(QtGui.QMainWindow):
 
     @Slot()
     def all_reset(self):
-        """receives click signal from allResetButton"""
         self.x_reset()
         self.y_reset()
         self.theta_reset()
