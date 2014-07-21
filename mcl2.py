@@ -6,6 +6,7 @@
 import random
 import time
 import math
+from numpy import arange
 # We need to use resource locking to handle synchronization between GUI
 # thread and ROS topic callbacks
 from threading import Lock
@@ -28,7 +29,6 @@ from irobot_mudd.msg import *
 # Some Constants
 GUI_UPDATE_PERIOD = 20 # ms
 USE_CM = True # set to True to use cm as main distance unit
-SCALE = 1.0 # how many distance units for one pixel? TODO
 WIDGET_SPACING = 10 # pixels of space between widgets
 DEFAULT_SIZE = 300 # side length of default image
 
@@ -72,7 +72,7 @@ class Sensor(object):
 
     Various measurements of the robot are as follows (warning: sample
     size of 1):
-    From Bluetooth receiver to front circle thingy - 6.4 cm
+    From Bluetooth receiver to front circle thingy - 16.4 cm
     From the word "activate" on the bottom to
         back left sensor - 16.5 cm
         front left sensor - 16.4 cm
@@ -172,9 +172,9 @@ class Robot(object):
             y_actual = self.y['raw']
         # if USE_CM = 1, values are converted here
         self.x['display'] = (100.0**USE_CM*(x_actual-self.x['diff']) +
-          self.x['offset']/SCALE)
+          self.x['offset'])
         self.y['display'] = (100.0**USE_CM*(y_actual-self.y['diff']) +
-          self.y['offset']/SCALE)
+          self.y['offset'])
         self.t['display'] = theta_display
         
     def update_draw(self, w, h):
@@ -182,8 +182,8 @@ class Robot(object):
         draws the graphics
         """
         origin = (w/2, h/2)
-        self.x['draw'] = origin[0] + self.x['display']*SCALE
-        self.y['draw'] = origin[1] - self.y['display']*SCALE
+        self.x['draw'] = origin[0] + self.x['display']/D.scale
+        self.y['draw'] = origin[1] - self.y['display']/D.scale
 
     def update_sensor_positions(self):
         """Update sensor coordinates using the robot's coordinates"""
@@ -208,7 +208,8 @@ class Robot(object):
 
     def get_sensor_draw_position(self):
         self.update_sensor_positions()
-        return [Sensor(s.x+self.x['draw'], s.y+self.y['draw'], s.light)
+        return [Sensor(s.x/D.scale + self.x['draw'],
+                       s.y/D.scale + self.y['draw'], s.light)
                 for s in self.sensors]
 
 
@@ -295,6 +296,7 @@ class RobotGUI(QtGui.QMainWindow):
         self.imageMap = Map()
         self.make_trail = 0
         self.make_mcl = 0
+        D.scale = 3.0
         # Initialize data values related to location
         self.trail = []
         self.recent_move = False
@@ -315,6 +317,7 @@ class RobotGUI(QtGui.QMainWindow):
         self.init_central()
         self.init_left()
         self.init_right()
+        self.setFocusPolicy(QtCore.Qt.ClickFocus)
 
     def init_menu(self):
         """Sets up main window's menu bar"""
@@ -407,7 +410,7 @@ class RobotGUI(QtGui.QMainWindow):
         
 
         self.step_label = QtGui.QLabel("Step: ", self)
-        self.step_meter_label = QtGui.QLabel(USE_CM*"c" + "m", self)
+        self.step_meter_label = QtGui.QLabel("m", self)
         self.step_degree_label = QtGui.QLabel("deg", self)
         meter_validator = QtGui.QDoubleValidator(1.0/(100.0**USE_CM), 50.0/(100.0**USE_CM), 2, self)
         self.step_meter_field = QtGui.QLineEdit(
@@ -768,14 +771,14 @@ class RobotGUI(QtGui.QMainWindow):
         self.eraseMCLButton.setEnabled(False)
 
         ###
-        # scale_tab # TODO
+        # scale_tab
         ###
         scale_tab = QtGui.QWidget(self)
 
         image_scale_group = QtGui.QGroupBox("Image scale")
-        self.image_scale_field = QtGui.QLineEdit("2")
+        self.image_scale_field = QtGui.QLineEdit(str(D.scale))
         self.image_scale_field.editingFinished.connect(self.image_scale_change)
-        image_scale_validator = QtGui.QIntValidator(1, 10, self)
+        image_scale_validator = QtGui.QDoubleValidator(1.0, 10.0, 1, self)
         self.image_scale_field.setValidator(image_scale_validator)
         image_scale_label = QtGui.QLabel(" " + USE_CM*"c" + "m to 1 px")
 
@@ -792,8 +795,6 @@ class RobotGUI(QtGui.QMainWindow):
         self.robot_sensor_shrink_checkbox = QtGui.QCheckBox(
           "Robot sensors", self)
         self.particle_shrink_checkbox = QtGui.QCheckBox("Particles", self)
-        self.particle_sensor_shrink_checkbox = QtGui.QCheckBox(
-          "Particle sensors", self)
 
         icon_shrink_layout = QtGui.QGridLayout()
         icon_shrink_group.setLayout(icon_shrink_layout)
@@ -801,8 +802,6 @@ class RobotGUI(QtGui.QMainWindow):
           self.robot_marker_shrink_checkbox, 0, 1)
         icon_shrink_layout.addWidget(self.robot_sensor_shrink_checkbox, 1, 1)
         icon_shrink_layout.addWidget(self.particle_shrink_checkbox, 2, 1)
-        icon_shrink_layout.addWidget(
-          self.particle_sensor_shrink_checkbox, 3, 1)
         image_scale_layout.setColumnStretch(0, 1)
         image_scale_layout.setColumnStretch(0, 3)
 
@@ -984,6 +983,24 @@ class RobotGUI(QtGui.QMainWindow):
         self.rightDock.setWidget(rightTabs)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.rightDock)
 
+    def keyPressEvent(self, event):
+        """Keyboard control of robot marker"""
+        if self.hasFocus() and self.virtual_control_checkbox.isChecked():
+            if event.key() == QtCore.Qt.Key_Up:
+                x_displacement = self.virtual_robot_meter_step * math.cos(math.radians(D.robot.t['display']))
+                y_displacement = self.virtual_robot_meter_step * math.sin(math.radians(D.robot.t['display']))
+                D.robot.x['raw'] += x_displacement
+                D.robot.y['raw'] += y_displacement
+            elif event.key() == QtCore.Qt.Key_Down:
+                x_displacement = self.virtual_robot_meter_step * math.cos(math.radians(D.robot.t['display']))
+                y_displacement = self.virtual_robot_meter_step * math.sin(math.radians(D.robot.t['display']))
+                D.robot.x['raw'] -= x_displacement
+                D.robot.y['raw'] -= y_displacement
+            elif event.key() == QtCore.Qt.Key_Left:
+                D.robot.t['raw'] += self.virtual_robot_degree_step
+            elif event.key() == QtCore.Qt.Key_Right:
+                D.robot.t['raw'] -= self.virtual_robot_degree_step
+
     def mouseDoubleClickEvent(self, event):
         """Can double click on MCL particles to show info"""
         if self.make_mcl == 2 and self.imageBox == self.childAt(event.pos()):
@@ -1038,12 +1055,15 @@ class RobotGUI(QtGui.QMainWindow):
 
         # updating locations
         D.robot.update_draw(self.width, self.height)
-        self.trail.append(
-          (D.robot.x['draw'], D.robot.y['draw'], D.robot.t['display']))
-        self.recent_move = (len(self.trail) >= 2 and 
-          self.trail[-2] != self.trail[-1])
-        if not self.make_trail and self.recent_move:
-            del self.trail[0]
+        location = (D.robot.x['draw'], D.robot.y['draw'], D.robot.t['display'])
+        if not self.trail or location != self.trail[-1]:
+            self.trail.append(location)
+            self.recent_move = True
+            if not self.make_trail and len(self.trail) > 2:
+                del self.trail[0]
+        else:
+            self.recent_move = False
+        
         D.robot.update_sensor_positions()
 
         if self.make_mcl:
@@ -1093,8 +1113,8 @@ class RobotGUI(QtGui.QMainWindow):
         """the MCL algorithm"""
         if not self.particles:
             self.particles = [Particle(
-                random.randint(-self.width/2, self.width/2),
-                random.randint(-self.height/2, self.height/2),
+                random.randint(-self.width, self.width),
+                random.randint(-self.height, self.height),
                 random.randint(0, 360),
                 1.0 / self.numParticles)
               for i in xrange(self.numParticles)]
@@ -1135,7 +1155,6 @@ class RobotGUI(QtGui.QMainWindow):
                     # resampled particles' probabilities normalized
                     self.particles.append(
                       newGen.pop().finish_resample(newSumProb))
-        
 
     def particle_info_update(self):
         """Updates particle info widget box"""
@@ -1202,51 +1221,58 @@ class RobotGUI(QtGui.QMainWindow):
             painter.drawLine(0, self.height/2, self.width, self.height/2)
         # drawing grid
         if self.gridCheckbox.isChecked():
-            spacing = 20
+            spacing = 50.0 / D.scale
             painter.setPen(QtGui.QColor.fromHsv(240,63,63))
             painter.setBrush(QtGui.QColor.fromHsv(240,63,63))
             # grid is centered on origin
-            for x in xrange((self.width/2)%spacing, self.width, spacing):
-                for y in xrange((self.height/2)%spacing, self.height, spacing):
-                    painter.drawEllipse(x, y, 1, 1)
+            for x in arange((self.width/2)%spacing, self.width, spacing):
+                for y in arange((self.height/2)%spacing, self.height, spacing):
+                    painter.drawEllipse(QtCore.QPointF(x, y), 1, 1)
         # drawing particles
         if self.make_mcl == 2:
-            self.particleRadius = (3 if self.particleDetailCheckbox.isChecked()
-              else 2)
-            selected_radius = self.particleRadius + 2
+            self.particleRadius = (16.5/D.scale if
+              self.particleDetailCheckbox.isChecked() else 10.0/D.scale)
             get_color = (self.calculate_color if
-                self.particleColoringCheckbox.isChecked() else
-                lambda x, y, z: QtGui.QColor("darkGray"))
+              self.particleColoringCheckbox.isChecked() else
+              lambda x, y, z: QtGui.QColor("darkGray"))
             for p in self.particles:
                 color = get_color(p, 255, 180)
-                painter.setPen(color)
                 painter.setBrush(color)
-                painter.drawEllipse(QtCore.QPoint(p.x['draw'], p.y['draw']), 
-                  self.particleRadius, self.particleRadius)
+                if self.particle_shrink_checkbox.isChecked():
+                    painter.setPen(color)
+                    painter.drawEllipse(
+                      QtCore.QPointF(p.x['draw'], p.y['draw']), 1.5, 1.5)
+                else:
+                    painter.setPen("black")
+                    painter.drawEllipse(
+                      QtCore.QPointF(p.x['draw'], p.y['draw']),
+                      self.particleRadius, self.particleRadius)
             if self.particleDetailCheckbox.isChecked():
                 # draws particle sensor locations and particle heading
                 for p in self.particles:
-                    painter.setPen("black")
+                    painter.setPen(QtGui.QColor(0, 255, 255))
+                    painter.setBrush(QtGui.QColor(0, 255, 255))
                     sensorDraw = p.get_sensor_draw_position()
                     for s in sensorDraw:
-                        painter.drawPoint(s.x, s.y)
+                        painter.drawPoint(QtCore.QPointF(s.x, s.y))
                     painter.drawLine(self.calculate_pointer(
                       p.x['draw'], p.y['draw'], p.t['display'],
                       self.particleRadius + 3, 4))
             if Particle.selected is not None:
+                selected_radius = self.particleRadius + 2
                 # determine color and draw particle
                 color = self.calculate_color(Particle.selected, 255, 255)
-                painter.setPen("black")
-                painter.setBrush(color)
-                painter.drawEllipse(
-                  QtCore.QPoint(
-                    Particle.selected.x['draw'], Particle.selected.y['draw']), 
+                painter.setPen(QtGui.QColor("black"))
+                painter.setBrush(QtGui.QColor(color))
+                painter.drawEllipse(QtCore.QPoint(
+                  Particle.selected.x['draw'], Particle.selected.y['draw']), 
                   selected_radius, selected_radius)
                 # draw sensors
-                painter.setPen("white")
+                painter.setPen(QtGui.QColor("white"))
+                painter.setBrush(QtGui.QColor("white"))
                 sensorDraw = Particle.selected.get_sensor_draw_position()
                 for s in sensorDraw:
-                    painter.drawPoint(s.x, s.y)
+                    painter.drawEllipse(QtCore.QPointF(s.x, s.y), 1.0, 1.0)
                 # draw pointer
                 painter.drawLine(self.calculate_pointer(
                   Particle.selected.x['draw'], Particle.selected.y['draw'],
@@ -1270,18 +1296,29 @@ class RobotGUI(QtGui.QMainWindow):
                 painter.drawPoint(p[0], p[1])
         # drawing robot marker
         if self.robotMarkerCheckbox.isChecked():
-            markerRadius = 8
+            markerRadius = 16.5 / D.scale
             painter.setPen(QtGui.QColor("black"))
             painter.setBrush(QtGui.QColor("lightGray"))
-            painter.drawEllipse(
-              QtCore.QPoint(self.trail[-1][0], self.trail[-1][1]),
-              markerRadius, markerRadius)
+            if self.robot_marker_shrink_checkbox.isChecked():
+                painter.drawEllipse(
+                  QtCore.QPointF(self.trail[-1][0], self.trail[-1][1]),
+                  2.0, 2.0)
+            else:
+                painter.drawEllipse(
+                  QtCore.QPointF(self.trail[-1][0], self.trail[-1][1]),
+                  markerRadius, markerRadius)
             # sensors
-            painter.setPen(QtGui.QColor(0,255,0))
             robot_sensor_draw = D.robot.get_sensor_draw_position()
-            for s in robot_sensor_draw:
-                painter.drawPoint(s.x, s.y)
+            painter.setPen(QtGui.QColor("black"))
+            painter.setBrush(QtGui.QColor(0,255,0))
+            if self.robot_sensor_shrink_checkbox.isChecked():
+                for s in robot_sensor_draw:
+                    painter.drawEllipse(QtCore.QPointF(s.x, s.y), 1.0, 1.0)
+            else:
+                for s in robot_sensor_draw:
+                    painter.drawEllipse(QtCore.QPointF(s.x, s.y), 2.0, 2.0)
             # pointer
+            painter.setPen(QtGui.QColor(0,255,0))
             painter.drawLine(self.calculate_pointer(
               self.trail[-1][0], self.trail[-1][1],
               float(self.thetaValue.text()), markerRadius + 3, 8))
@@ -1495,8 +1532,11 @@ class RobotGUI(QtGui.QMainWindow):
         self.erase_trail()
         self.erase_mcl()
 
-    def image_scale_change(self): # TODO
-        pass
+    def image_scale_change(self):
+        sender = self.sender()
+        if sender == self.image_scale_field:
+            D.scale = float(self.image_scale_field.text())
+            self.erase_mcl()
 
     ###
     # Position slots
@@ -1515,7 +1555,7 @@ class RobotGUI(QtGui.QMainWindow):
         self.erase_trail()
         self.erase_mcl()
 
-    def virtual_control_toggle(self): # TODO
+    def virtual_control_toggle(self):
         """Connects to virtual control checkbox"""
         global D
         D.use_gui_control = (True if self.virtual_control_checkbox.isChecked()
@@ -1528,19 +1568,26 @@ class RobotGUI(QtGui.QMainWindow):
         if sender == self.step_meter_field:
             self.virtual_robot_meter_step = float(self.step_meter_field.text())
         elif sender == self.step_degree_field:
-            self.virtual_robot_degree_step = float(self.step_degree_field.text())
+            self.virtual_robot_degree_step = float(
+              self.step_degree_field.text())
 
-    def virtual_move(self): # TODO
+    def virtual_move(self):
         """Moves robot by virtual_robot_step pixels"""
         sender = self.sender()
         if sender == self.forward_button:
-            x_displacement = self.virtual_robot_meter_step * math.cos(math.radians(D.robot.t['display']))
-            y_displacement = self.virtual_robot_meter_step * math.sin(math.radians(D.robot.t['display']))
+            x_displacement = self.virtual_robot_meter_step * math.cos(
+              math.radians(D.robot.t['display']))
+            y_displacement = self.virtual_robot_meter_step * math.sin(
+              math.radians(D.robot.t['display']))
             D.robot.x['raw'] += x_displacement
             D.robot.y['raw'] += y_displacement
-            print x_displacement
         elif sender == self.backward_button:
-            pass
+            x_displacement = self.virtual_robot_meter_step * math.cos(
+              math.radians(D.robot.t['display']))
+            y_displacement = self.virtual_robot_meter_step * math.sin(
+              math.radians(D.robot.t['display']))
+            D.robot.x['raw'] -= x_displacement
+            D.robot.y['raw'] -= y_displacement
         elif sender == self.turn_left_button:
             D.robot.t['raw'] += self.virtual_robot_degree_step
         elif sender == self.turn_right_button:
