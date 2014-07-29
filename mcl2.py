@@ -38,39 +38,6 @@ D = Data()
 D.use_gui_control = False
 
 
-class Map(object):
-
-    """An image file interpreted as a map.
-
-    Instance variables:
-    black_lines -- black pixels representing black lines on floor
-    white_lines -- white pixels representing white lines on floor
-
-    Methods:
-    light_of_point -- gets expected light value of given point
-    """
-
-    black_value = 0
-    neutral_value = 200
-    white_value = 1600
-
-    def __init__(self):
-        self.black_lines = []
-        self.white_lines = []
-
-    def __nonzero__(self):
-        return False if self == Map() else True
-
-    def light_of_point(self, point):
-        """Gets expected light value of given point"""
-        if point in self.black_lines:
-            return self.black_value
-        elif point in self.white_lines:
-            return self.white_lines
-        else:
-            return self.neutral_value
-
-
 class Sensor(object):
 
     """Represents IR light sensor on a (possibly hypothetical) robot.
@@ -132,11 +99,6 @@ class Robot(object):
     # The angles between a line from the center to the front and a line
     # from the center to the sensor
     sensor_angles = [66, 16, -16, -66]
-    # The Cartesian coordinates of the sensors when theta = 0 deg
-    sensor_initial_position = []
-    for args in [
-      (6.71, 15.07), (15.86, 4.55), (-15.86, -4.55), (-6.71, -15.07)]:
-        sensor_initial_position.append(Sensor(*args))
     recent_move = False
 
     def __init__(self):
@@ -147,8 +109,10 @@ class Robot(object):
                   'diff': 0.0, 'prev': 0.0}
         self.t = {'raw': 0.0, 'display': 0.0, 'offset': 0, 'diff': 0.0}
         self.pivot = ()
+        # The Cartesian coordinates of the sensors when theta = 0 deg
+        self.sensors = [Sensor(6.71, 15.07), Sensor(15.86, 4.55),
+                        Sensor(-15.86, -4.55), Sensor(-6.71, -15.07)]
         self.charge_level = ""
-        self.sensors = self.sensor_initial_position
 
     def update_display(self):
         """Updates the coordinates displayed in the "Position" tab,
@@ -158,7 +122,7 @@ class Robot(object):
         # 0 degrees arbitrarily defined to be the horizontal and
         # theta increases in the counterclockwise direction
         theta_display = self.t['offset'] + self.t['raw'] - self.t['diff']
-        while theta_display > 360: theta_display -= 360
+        while theta_display > 359: theta_display -= 360
         while theta_display < 0: theta_display += 360
         if self.t['diff'] or self.t['offset']:
             if self.pivot:
@@ -199,14 +163,32 @@ class Robot(object):
             s.x = math.cos(math.radians(angle)) * distance
             s.y = math.sin(math.radians(angle)) * distance
 
-    def update_sensor_values(self, values=[], virtual=False, image_map=False):
+    def update_sensor_values(self, values=[], virtual=False,
+                             image_map=QtGui.QImage()):
         """Update sensor light values"""
-        if image_map and virtual:
-            for s in self.sensors:
-                s.light = image_map.light_of_point((s.x, s.y))
-        elif values:
+        if values:
             for i in xrange(4):
                 self.sensors[i].light = values[i]
+        elif image_map.isNull():
+            for s in self.sensors:
+                s.light = -1
+        elif virtual:
+            sensor_points = self.get_sensor_draw_position()
+            for i in xrange(4):
+                if (sensor_points[i].x >= 0 and
+                        sensor_points[i].x <= image_map.width() and
+                        sensor_points[i].y >= 0 and
+                        sensor_points[i].y <= image_map.height()):
+                    color_at_point = QtGui.QColor.fromRgb(
+                      image_map.pixel(sensor_points[i].x, sensor_points[i].y))
+                    if color_at_point == QtGui.QColor("white"):
+                        self.sensors[i].light = 1000
+                    elif color_at_point == QtGui.QColor("black"):
+                        self.sensors[i].light = 0
+                    else:
+                        self.sensors[i].light = 200
+                else:
+                    self.sensors[i].light = -1
 
     def get_sensor_global_position(self):
         """Use the robot's x, y, theta to convert its Sensor object
@@ -249,15 +231,17 @@ class Particle(Robot):
         self.x = {'display': x, 'draw': 0.0, 'prev': 0.0}
         self.y = {'display': y, 'draw': 0.0, 'prev': 0.0}
         self.t = {'display': t}
-        self.sensors = self.sensor_initial_position
+        # The Cartesian coordinates of the sensors when theta = 0 deg
+        self.sensors = [Sensor(6.71, 15.07), Sensor(15.86, 4.55),
+                        Sensor(-15.86, -4.55), Sensor(-6.71, -15.07)]
         self.prob = probability
 
     def update_display(self, x, y, t, direction):
         """Moves the particle as specified by the arguments"""
         total_disp = ((x**2)+(y**2))**.5
         self.t['display'] += t
-        while self.t['display'] > 360: self.t['display'] -= 360
-        while self.t['display'] < 360: self.t['display'] += 360
+        while self.t['display'] > 359: self.t['display'] -= 360
+        while self.t['display'] < 0: self.t['display'] += 360
         my_t = self.t['display'] 
         my_t_in_rad = math.radians( my_t )
 
@@ -273,11 +257,6 @@ class Particle(Robot):
         if direction=="Backward":
             self.x['display'] -= x
             self.y['display'] -= y
-
-    # def update_sensor_values(self, image_map):
-    #     """Update sensor light values based on map"""
-    #     super(Particle, self).update_sensor_values(
-    #       virtual=True, image_map=image_map)
 
     def finish_resample(self, xy_noise, t_noise, psum):
         """Adds noise to x, y, theta, and divides prob by sum"""
@@ -323,7 +302,7 @@ class RobotGUI(QtGui.QMainWindow):
         self.height = DEFAULT_SIZE
         self.virtual_robot_meter_step = 0.01
         self.virtual_robot_degree_step = 1.0
-        self.imageMap = Map()
+        self.imageMap = QtGui.QImage()
         self.make_trail = 0
         self.make_mcl = 0
         # Initialize data values related to location
@@ -1018,11 +997,13 @@ class RobotGUI(QtGui.QMainWindow):
         """updates the GUI"""
         global D
         # updating background image
-        # it's always gray. features drawn later
         image = QtGui.QPixmap()
-        image.convertFromImage(QtGui.QImage(
-          self.width,self.height,QtGui.QImage.Format_RGB888))
-        image.fill(QtGui.QColor.fromHsv(240, 63, 127))
+        if self.imageMap:
+            image.convertFromImage(self.imageMap)
+        else:
+            image.convertFromImage(QtGui.QImage(
+              self.width,self.height,QtGui.QImage.Format_RGB888))
+            image.fill(QtGui.QColor.fromHsv(240, 63, 127))
 
         # updating light sensor readings
         sensor_global = D.robot.get_sensor_global_position()
@@ -1050,7 +1031,6 @@ class RobotGUI(QtGui.QMainWindow):
             self.trail.append(location)
             if not self.make_trail and len(self.trail) > 2:
                 del self.trail[0]
-        D.robot.update_sensor_positions()
 
         if self.make_mcl:
            self.mcl_update()
@@ -1071,16 +1051,16 @@ class RobotGUI(QtGui.QMainWindow):
         """the MCL algorithm"""
         if not self.particles:
             self.particles = [Particle(
-                random.randint(-self.width/2, self.width/2),
-                random.randint(-self.height/2, self.height/2),
-                random.randint(0, 360),
+                random.uniform(-self.width/2, self.width/2),
+                random.uniform(-self.height/2, self.height/2),
+                random.uniform(0, 360),
                 1.0 / self.numParticles)
               for i in xrange(self.numParticles)]
         else:
             for p in self.particles:
                 p.update_draw(self.width, self.height)
                 p.update_sensor_positions()
-                p.update_sensor_values(virtual=D.use_gui_control, image_map=self.imageMap)
+                p.update_sensor_values(virtual=True, image_map=self.imageMap)
         if Robot.recent_move:
             # change particle weights based on updates from robot
             for p in self.particles:
@@ -1140,11 +1120,12 @@ class RobotGUI(QtGui.QMainWindow):
                     self.particle_sensor_back_right_value.setText
                 ]
             if Particle.selected is not None:
-                self.particle_position_value.setText(str(
-                  (Particle.selected.x['display'],
-                   Particle.selected.y['display'])))
+                self.particle_position_value.setText(
+                  '({:.2f}, {:.2f})'.format(
+                    Particle.selected.x['display'],
+                    Particle.selected.y['display']))
                 self.particle_theta_value.setText(
-                  str(Particle.selected.t['display']))
+                  '{:.1f}'.format(Particle.selected.t['display']))
                 self.particle_weight_value.setText(
                   '{:f}'.format(Particle.selected.prob))
                 sensor_global = Particle.selected.get_sensor_global_position()
@@ -1176,16 +1157,6 @@ class RobotGUI(QtGui.QMainWindow):
         """Updates display image"""
         painter = QtGui.QPainter()
         painter.begin(image)
-        # drawing map features
-        if self.imageMap:
-            painter.setPen(QtGui.QColor(255, 255, 255))
-            painter.setBrush(QtGui.QColor(255, 255, 255))
-            for p in self.imageMap.white_lines:
-                painter.drawPoint(p[0], p[1])
-            painter.setPen(QtGui.QColor(0, 0, 0))
-            painter.setBrush(QtGui.QColor(0, 0, 0))
-            for p in self.imageMap.black_lines:
-                painter.drawPoint(p[0], p[1])
         # drawing axes
         if self.axesCheckbox.isChecked():
             painter.setPen(QtGui.QColor.fromHsv(240, 63, 63))
@@ -1374,20 +1345,10 @@ class RobotGUI(QtGui.QMainWindow):
         if toLoad.load(fname):
             self.width = toLoad.width()
             self.height = toLoad.height()
-            self.imageMap.white_lines = []
-            self.imageMap.black_lines = []
+            self.imageMap = toLoad
             self.setWindowTitle('RobotBox - ' + fname)
             self.erase_trail()
             self.erase_mcl()
-            # add black/white pixels to their lists
-            for x in xrange(self.width):
-                for y in xrange(self.height):
-                    if (QtGui.QColor(toLoad.pixel(x,y)) ==
-                            QtGui.QColor("white")):
-                        self.imageMap.white_lines.append((x,y))
-                    elif (QtGui.QColor(toLoad.pixel(x,y)) ==
-                            QtGui.QColor("black")):
-                        self.imageMap.black_lines.append((x,y))
             self.statusBar().showMessage("Image " + fname + " opened", 3000)
         else:
             self.statusBar().showMessage("Failed to open image", 3000)
@@ -1395,8 +1356,7 @@ class RobotGUI(QtGui.QMainWindow):
     def clear_image(self):
         self.width = DEFAULT_SIZE
         self.height = DEFAULT_SIZE
-        self.imageMap.white_lines = []
-        self.imageMap.black_lines = []
+        self.imageMap = QtGui.QImage()
         self.setWindowTitle('RobotBox')
         self.erase_trail()
         self.erase_mcl()
@@ -1477,9 +1437,6 @@ class RobotGUI(QtGui.QMainWindow):
         self.erase_trail()
         self.erase_mcl()
 
-    def image_scale_change(self):
-        pass
-
     ###
     # Position slots
     ###
@@ -1541,7 +1498,7 @@ class RobotGUI(QtGui.QMainWindow):
             D.robot.t['raw'] += self.virtual_robot_degree_step
         elif sender == self.turn_right_button:
             D.robot.t['raw'] -= self.virtual_robot_degree_step
-            print self.imageMap.white_lines, self.imageMap.black_lines
+        D.robot.update_sensor_positions()
         D.robot.update_sensor_values(virtual=True, image_map=self.imageMap)
         
 
@@ -1556,10 +1513,10 @@ def sensor_callback( data ):
         D.robot.x['raw'] = data.x
         D.robot.y['raw'] = data.y
         D.robot.t['raw'] = math.degrees(data.theta)
-        D.robot.update_sensor_values([data.cliffLeftSignal,
-                                      data.cliffFrontLeftSignal,
-                                      data.cliffFrontRightSignal,
-                                      data.cliffRightSignal])
+        D.robot.update_sensor_values(values=[data.cliffLeftSignal,
+                                             data.cliffFrontLeftSignal,
+                                             data.cliffFrontRightSignal,
+                                             data.cliffRightSignal])
         Robot.recent_move = (True if D.robot.x['raw'] != D.robot.x['prev'] or
             D.robot.y['raw'] != D.robot.y['prev'] else False)
 
