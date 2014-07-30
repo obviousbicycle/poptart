@@ -6,9 +6,6 @@
 import random
 import time
 import math
-# We need to use resource locking to handle synchronization between GUI
-# thread and ROS topic callbacks
-from threading import Lock
 
 # The GUI libraries
 from PySide import QtCore, QtGui
@@ -27,34 +24,20 @@ from irobot_mudd.msg import *
 
 # Some Constants
 GUI_UPDATE_PERIOD = 20 # ms
-USE_CM = True # set to True to use cm as main distance unit
-SCALE = 1.0 # how many distance units for one pixel? TODO
-WIDGET_SPACING = 10 # pixels of space between widgets
+USE_CM = True # Meters or centimeters
+SCALE = 1.0 # How many distance units for one pixel? TODO
+WIDGET_SPACING = 10 # Pixels of space between widgets
 DEFAULT_SIZE = 300 # side length of default image
 
 
-class Data: pass    # empty class for a generic data holder
+class Data: pass    # Empty class for a generic data holder
 D = Data()
 D.use_gui_control = False
 
 
 class Sensor(object):
 
-    """Represents IR light sensor on a (possibly hypothetical) robot.
-
-    Various measurements of the robot are as follows (warning: sample
-    size of 1):
-    From Bluetooth receiver to front circle thingy - 6.4 cm
-    From the word "activate" on the bottom to
-        back left sensor - 16.5 cm
-        front left sensor - 16.4 cm
-        front right sensor - 16.3 cm
-        back right sensor - 16.5 cm
-    To the front wheel from
-        back left sensor - 17.8 cm
-        front left sensor - 4.8 cm
-        front right sensor - 4.7 cm
-        back right sensor - 18.0 cm
+    """Represents IR light sensor on a robot.
 
     Instance variables:
     x -- the sensor's x-coordinate relative to the robot's center
@@ -72,21 +55,41 @@ class Sensor(object):
 class Robot(object):
 
     """Represents the Robot on the map.
+    
+    Various measurements of the robot are as follows (warning: sample
+    size of 1):
+    From Bluetooth receiver to front circle thingy - 6.4 cm
+    From the word "activate" on the bottom to
+        back left sensor - 16.5 cm
+        front left sensor - 16.4 cm
+        front right sensor - 16.3 cm
+        back right sensor - 16.5 cm
+    To the front wheel from
+        back left sensor - 17.8 cm
+        front left sensor - 4.8 cm
+        front right sensor - 4.7 cm
+        back right sensor - 18.0 cm
 
     Instance variables:
-    x, y -- the coordinates of the robot
-    theta -- the angle at which the robot would move forward,
-        relative to the horizontal
-    x_previous, y_previous -- reported coordinates from previous GUI
-        update
-    chargeLevel -- displays robot charge level
-    sensors -- an array of four sensors
+    x, y -- a dictionary of the robot's coordinates
+        'raw' is the value coming directly from the robot
+        'display' is what is shown on the GUI
+        'draw' is passed into graphics-drawing methods that set (0, 0)
+            at the upper-left corner
+        'offset' stores values from offset sliders
+        'diff' is used with the reset buttons
+        'prev' is the previous raw value
+    t -- a dictionary of theta values, theta being the angle at which
+        the robot would move forward, relative to the horizontal and
+        increasing in the counterclockwise direction
+    pivot -- a tuple (x, y, t) used for correctly drawing the robot
+    sensors -- an array of four Sensor objects, arranged as such:
+        [back left, front left, front right, back right]
+    charge_level
 
     Class variables:
-    sensor_angles -- an array of the angles of the four sensors
-        relative to the direction the robot is facing
-    sensor_initial_position -- an array of the initial coordinates of
-        the four sensors
+    sensor_angles -- measurements from actual robot
+    recent_move
 
     Methods:
     update_sensor_positions -- update sensors' coordinates
@@ -116,15 +119,17 @@ class Robot(object):
 
     def update_display(self):
         """Updates the coordinates displayed in the "Position" tab,
-        which are also the cartesian coordinates of the robot in the
-        display image"""
-        # convert theta to degrees and set bounds
-        # 0 degrees arbitrarily defined to be the horizontal and
-        # theta increases in the counterclockwise direction
+        which are also the Cartesian coordinates of the robot in the
+        display image
+        """
         theta_display = self.t['offset'] + self.t['raw'] - self.t['diff']
         while theta_display > 359: theta_display -= 360
         while theta_display < 0: theta_display += 360
         if self.t['diff'] or self.t['offset']:
+            # A set pivot was used to get the robot marker to move in
+            # the proper direction after changing theta offset/diff.
+            # Changing offset/diff more than once may cause the robot
+            # marker to teleport weirdly.
             if self.pivot:
                 distance = math.hypot(
                   self.x['raw'] - self.pivot[0], self.y['raw'] - self.pivot[1])
@@ -140,7 +145,6 @@ class Robot(object):
         else:
             x_actual = self.x['raw']
             y_actual = self.y['raw']
-        # if USE_CM = 1, values are converted here
         self.x['display'] = (100.0**USE_CM*(x_actual-self.x['diff']) +
           self.x['offset']/SCALE)
         self.y['display'] = (100.0**USE_CM*(y_actual-self.y['diff']) +
@@ -148,9 +152,7 @@ class Robot(object):
         self.t['display'] = theta_display
         
     def update_draw(self, w, h):
-        """Updates coordinates of robot marker passed into whatever
-        draws the graphics
-        """
+        """Updates x/y draw values"""
         origin = (w/2, h/2)
         self.x['draw'] = origin[0] + self.x['display']*SCALE
         self.y['draw'] = origin[1] - self.y['display']*SCALE
@@ -159,14 +161,15 @@ class Robot(object):
         """Update sensor coordinates using the robot's coordinates"""
         for s in self.sensors:
             distance = math.hypot(s.x, s.y)
-            angle = self.sensor_angles[self.sensors.index(s)]-self.t['display']
+            angle = (self.sensor_angles[self.sensors.index(s)] - 
+              self.t['display'])
             s.x = math.cos(math.radians(angle)) * distance
             s.y = math.sin(math.radians(angle)) * distance
 
     def update_sensor_values(self, values=[], virtual=False,
                              image_map=QtGui.QImage()):
         """Update sensor light values"""
-        if values:
+        if values: # True only when robot is connected
             for i in xrange(4):
                 self.sensors[i].light = values[i]
         elif image_map.isNull():
@@ -179,6 +182,8 @@ class Robot(object):
                         sensor_points[i].x <= image_map.width() and
                         sensor_points[i].y >= 0 and
                         sensor_points[i].y <= image_map.height()):
+                    # sensors get assigned color value depending on
+                    # color of pixel underneath on map
                     color_at_point = QtGui.QColor.fromRgb(
                       image_map.pixel(sensor_points[i].x, sensor_points[i].y))
                     if color_at_point == QtGui.QColor("white"):
@@ -188,6 +193,7 @@ class Robot(object):
                     else:
                         self.sensors[i].light = 200
                 else:
+                    # Sensors out of image bounds get invalid value
                     self.sensors[i].light = -1
 
     def get_sensor_global_position(self):
@@ -199,6 +205,9 @@ class Robot(object):
                 for s in self.sensors]
 
     def get_sensor_draw_position(self):
+        """Use the robot's x, y, theta to convert its Sensor object
+        coordinates to equivalent coordinates for drawing graphics
+        """
         self.update_sensor_positions()
         return [Sensor(s.x+self.x['draw'], s.y+self.y['draw'], s.light)
                 for s in self.sensors]
@@ -216,9 +225,7 @@ class Particle(Robot):
     selected -- whether there is a double-clicked particle
 
     New and overriding methods:
-    displace -- a neat way to change x, y, theta
-    update_sensor_values -- update sensors' coordinates and values
-        based on given map
+    update_display -- 
     finish_resample -- the last thing a particle needs to do before it
         can really be part of a new generation
     """
@@ -231,30 +238,24 @@ class Particle(Robot):
         self.x = {'display': x, 'draw': 0.0, 'prev': 0.0}
         self.y = {'display': y, 'draw': 0.0, 'prev': 0.0}
         self.t = {'display': t}
-        # The Cartesian coordinates of the sensors when theta = 0 deg
         self.sensors = [Sensor(6.71, 15.07), Sensor(15.86, 4.55),
                         Sensor(-15.86, -4.55), Sensor(-6.71, -15.07)]
         self.prob = probability
 
     def update_display(self, x, y, t, direction):
         """Moves the particle as specified by the arguments"""
-        total_disp = ((x**2)+(y**2))**.5
+        magnitude = math.hypot(x, y)
         self.t['display'] += t
         while self.t['display'] > 359: self.t['display'] -= 360
         while self.t['display'] < 0: self.t['display'] += 360
-        my_t = self.t['display'] 
-        my_t_in_rad = math.radians( my_t )
-
-        if not D.use_gui_control: # TODO
+        if not D.use_gui_control: # TODO: fix marker moving backward when robot moves forward
             direction = "Forward"
-
-        x = math.cos( my_t_in_rad )*total_disp
-        y = math.sin( my_t_in_rad )*total_disp
-
-        if direction=="Forward":
+        x = math.cos(math.radians(self.t['display'])) * magnitude
+        y = math.sin(math.radians(self.t['display'])) * magnitude
+        if direction == "Forward":
             self.x['display'] += x
             self.y['display'] += y
-        if direction=="Backward":
+        if direction == "Backward":
             self.x['display'] -= x
             self.y['display'] -= y
 
@@ -277,7 +278,7 @@ class RobotGUI(QtGui.QMainWindow):
 
     Instance variables, not including widgets:
     width, height -- dimensions of display image
-    imageMap -- image map of area
+    image_map -- image map of area
     make_trail -- toggle robot trail
     make_mcl -- toggle MCL
     x_offset, y_offset, theta_offset -- robot marker offset in pixels
@@ -302,10 +303,10 @@ class RobotGUI(QtGui.QMainWindow):
         self.height = DEFAULT_SIZE
         self.virtual_robot_meter_step = 0.01
         self.virtual_robot_degree_step = 1.0
-        self.imageMap = QtGui.QImage()
+        self.image_map = QtGui.QImage()
         self.make_trail = 0
         self.make_mcl = 0
-        # Initialize data values related to location
+        # Initialize array of past locations
         self.trail = []
         # Initialize light threshold array
         # First four are lower, last four are upper
@@ -998,8 +999,8 @@ class RobotGUI(QtGui.QMainWindow):
         global D
         # updating background image
         image = QtGui.QPixmap()
-        if self.imageMap:
-            image.convertFromImage(self.imageMap)
+        if self.image_map:
+            image.convertFromImage(self.image_map)
         else:
             image.convertFromImage(QtGui.QImage(
               self.width,self.height,QtGui.QImage.Format_RGB888))
@@ -1060,7 +1061,7 @@ class RobotGUI(QtGui.QMainWindow):
             for p in self.particles:
                 p.update_draw(self.width, self.height)
                 p.update_sensor_positions()
-                p.update_sensor_values(virtual=True, image_map=self.imageMap)
+                p.update_sensor_values(virtual=True, image_map=self.image_map)
         if Robot.recent_move:
             # change particle weights based on updates from robot
             for p in self.particles:
@@ -1345,7 +1346,7 @@ class RobotGUI(QtGui.QMainWindow):
         if toLoad.load(fname):
             self.width = toLoad.width()
             self.height = toLoad.height()
-            self.imageMap = toLoad
+            self.image_map = toLoad
             self.setWindowTitle('RobotBox - ' + fname)
             self.erase_trail()
             self.erase_mcl()
@@ -1356,7 +1357,7 @@ class RobotGUI(QtGui.QMainWindow):
     def clear_image(self):
         self.width = DEFAULT_SIZE
         self.height = DEFAULT_SIZE
-        self.imageMap = QtGui.QImage()
+        self.image_map = QtGui.QImage()
         self.setWindowTitle('RobotBox')
         self.erase_trail()
         self.erase_mcl()
@@ -1499,7 +1500,7 @@ class RobotGUI(QtGui.QMainWindow):
         elif sender == self.turn_right_button:
             D.robot.t['raw'] -= self.virtual_robot_degree_step
         D.robot.update_sensor_positions()
-        D.robot.update_sensor_values(virtual=True, image_map=self.imageMap)
+        D.robot.update_sensor_values(virtual=True, image_map=self.image_map)
         
 
 def sensor_callback( data ):
