@@ -281,18 +281,18 @@ class RobotGUI(QtGui.QMainWindow):
     image_map -- image map of area
     make_trail -- toggle robot trail
     make_mcl -- toggle MCL
-    x_offset, y_offset, theta_offset -- robot marker offset in pixels
+    x_offset, y_offset, t_offset -- robot marker offset in pixels
     trail -- list of all past robot locations, from oldest to newest
     recent_move -- true if robot moved since last GUI update
-    xDiff, yDiff, thetaDiff -- for "clearing" odometer
+    x_diff, y_diff, t_diff -- for "clearing" odometer
     pivot -- for theta offset/reset purposes
     thresholds -- user-input light thresholds
-    numParticles -- how many MCL particles
+    num_particles -- how many MCL particles
     particles -- list of Particle objects
-    xyNoise, thetaNoise -- MCL resampled points noise, as sigma of
+    xy_noise, t_noise -- MCL resampled points noise, as sigma of
         Gaussian distribution
-    statusMessage -- the message in the window's bottom status bar
-    redrawTimer -- redraws GUI with each cycle
+    status_message -- the message in the window's bottom status bar
+    redraw_timer -- redraws GUI with each cycle
     """
 
     def __init__(self):
@@ -312,12 +312,12 @@ class RobotGUI(QtGui.QMainWindow):
         # First four are lower, last four are upper
         self.thresholds = [100, 180, 180, 150, 800, 1000, 1000, 1000]
         # Initialize data values related to MCL
-        #self.numParticles = int(self.width * self.height * 0.01)
-        self.numParticles = 1
+        #self.num_particles = int(self.width * self.height * 0.01)
+        self.num_particles = 1
         self.particles = []
-        self.particleRadius = 0
-        self.xyNoise = 0.0
-        self.thetaNoise = 0.0
+        self.particle_radius = 0
+        self.xy_noise = 0.0
+        self.t_noise = 0.0
         # Initialize robot
         D.robot = Robot()
         # Initialize each section of the main window
@@ -329,45 +329,43 @@ class RobotGUI(QtGui.QMainWindow):
 
     def init_menu(self):
         """Sets up main window's menu bar"""
-        self.saveAction = QtGui.QAction("&Save image", self)
-        self.saveAction.setShortcut(QtGui.QKeySequence("Ctrl+S"))
-        self.saveAction.triggered.connect(self.save_image)
-        self.openAction = QtGui.QAction("&Open map", self)
-        self.openAction.triggered.connect(self.open_image)
-        self.openAction.setShortcut(QtGui.QKeySequence("Ctrl+O"))
-        self.clearAction = QtGui.QAction("Clear image && map", self)
-        self.clearAction.triggered.connect(self.clear_image)
-        fileMenu = self.menuBar().addMenu("File")
-        fileMenu.addAction(self.saveAction)
-        fileMenu.addAction(self.openAction)
-        fileMenu.addAction(self.clearAction)
+        self.save_action = QtGui.QAction("&Save image", self)
+        self.save_action.setShortcut(QtGui.QKeySequence("Ctrl+S"))
+        self.save_action.triggered.connect(self.save_image)
+        self.open_action = QtGui.QAction("&Open map", self)
+        self.open_action.triggered.connect(self.open_image)
+        self.open_action.setShortcut(QtGui.QKeySequence("Ctrl+O"))
+        self.clear_action = QtGui.QAction("Clear image && map", self)
+        self.clear_action.triggered.connect(self.clear_image)
+        file_menu = self.menuBar().addMenu("File")
+        file_menu.addAction(self.save_action)
+        file_menu.addAction(self.open_action)
+        file_menu.addAction(self.clear_action)
 
     def init_central(self):
-        """Central Widget: imageBox
-        Displays top-down map over the robot
-        """
+        """Displays top-down map over the robot"""
         # Setup our very basic GUI - a label which fills the whole
         # window and holds our image
         self.setWindowTitle('RobotBox')
-        self.imageBox = QtGui.QLabel(self)
-        self.setCentralWidget(self.imageBox)
+        self.image_box = QtGui.QLabel(self)
+        self.setCentralWidget(self.image_box)
         # Holds the status message to be displayed on the next
         # GUI update
-        self.statusMessage = ''
+        self.status_message = ''
         # A timer to redraw the GUI
-        self.redrawTimer = QtCore.QTimer(self)
-        self.redrawTimer.timeout.connect(self.redraw_callback)
-        self.redrawTimer.start(GUI_UPDATE_PERIOD)
+        self.redraw_timer = QtCore.QTimer(self)
+        self.redraw_timer.timeout.connect(self.redraw_callback)
+        self.redraw_timer.start(GUI_UPDATE_PERIOD)
 
     def init_left(self):
-        """Left Dock Widgets: positionGroup, lightGroup
-        positionGroup displays position data from sensorPacket
-        lightGroup displays IR light sensor data from sensorPacket
+        """Displays position data from sensorPacket, displays IR
+        light sensor data from sensorPacket, and displays MCL
+        particle info
         """
         leftTabs = QtGui.QTabWidget(self)
 
         ###
-        # positionGroup # TODO
+        # positionGroup
         ###
         positionGroup = QtGui.QWidget(self)
         # coordinate display
@@ -414,8 +412,6 @@ class RobotGUI(QtGui.QMainWindow):
         physicalLayout.setRowMinimumHeight(6, WIDGET_SPACING)
         physicalLayout.setColumnStretch(0, 1)
         physicalLayout.setColumnStretch(6, 1)
-        
-        
 
         self.step_label = QtGui.QLabel("Step: ", self)
         self.step_meter_label = QtGui.QLabel("m", self)
@@ -818,21 +814,21 @@ class RobotGUI(QtGui.QMainWindow):
         self.y_offset_slider.valueChanged.connect(self.offset_slider_change)
 
         # theta
-        theta_offsetLabel = QtGui.QLabel("Theta", self)
+        t_offsetLabel = QtGui.QLabel("Theta", self)
         # theta input field
-        self.theta_offset_field = QtGui.QLineEdit("0")
-        self.theta_offset_field.editingFinished.connect(
+        self.t_offset_field = QtGui.QLineEdit("0")
+        self.t_offset_field.editingFinished.connect(
           self.offset_field_change)
-        theta_offsetValidator = QtGui.QIntValidator(0, 359, self)
-        self.theta_offset_field.setValidator(theta_offsetValidator)
+        t_offsetValidator = QtGui.QIntValidator(0, 359, self)
+        self.t_offset_field.setValidator(t_offsetValidator)
         # theta slider
-        self.theta_offset_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.theta_offset_slider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.theta_offset_slider.setMinimum(0)
-        self.theta_offset_slider.setMaximum(359)
-        self.theta_offset_slider.setTickInterval(15)
-        self.theta_offset_slider.setValue(0)
-        self.theta_offset_slider.valueChanged.connect(
+        self.t_offset_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.t_offset_slider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.t_offset_slider.setMinimum(0)
+        self.t_offset_slider.setMaximum(359)
+        self.t_offset_slider.setTickInterval(15)
+        self.t_offset_slider.setValue(0)
+        self.t_offset_slider.valueChanged.connect(
           self.offset_slider_change)
 
         # offsetGroup layout
@@ -845,9 +841,9 @@ class RobotGUI(QtGui.QMainWindow):
                        (y_offsetLabel, 5, 0),
                  (self.y_offset_field, 5, 1),
                 (self.y_offset_slider, 6, 0, 1, 2),
-                   (theta_offsetLabel, 7, 0),
-             (self.theta_offset_field, 7, 1),
-            (self.theta_offset_slider, 8, 0, 1, 2)
+                   (t_offsetLabel, 7, 0),
+             (self.t_offset_field, 7, 1),
+            (self.t_offset_slider, 8, 0, 1, 2)
         ]
         for args in offsetWidgetsToAdd: offsetLayout.addWidget(*args)
         # spacing
@@ -861,52 +857,52 @@ class RobotGUI(QtGui.QMainWindow):
         mclGroup = QtGui.QWidget(self)
 
         # number of particles
-        numParticlesLabel = QtGui.QLabel("# particles", self)
+        num_particlesLabel = QtGui.QLabel("# particles", self)
         # input field
-        self.numParticlesField = QtGui.QLineEdit(str(self.numParticles))
-        self.numParticlesField.editingFinished.connect(self.num_particles_set)
-        numParticlesMax = self.width*self.height
-        numParticlesValidator = QtGui.QIntValidator(1, numParticlesMax, self)
-        self.numParticlesField.setValidator(numParticlesValidator)
-        self.numParticlesField.setMaxLength(len(str(numParticlesMax)))
+        self.num_particlesField = QtGui.QLineEdit(str(self.num_particles))
+        self.num_particlesField.editingFinished.connect(self.num_particles_set)
+        num_particlesMax = self.width*self.height
+        num_particlesValidator = QtGui.QIntValidator(1, num_particlesMax, self)
+        self.num_particlesField.setValidator(num_particlesValidator)
+        self.num_particlesField.setMaxLength(len(str(num_particlesMax)))
 
         # xy noise
         # apparently sliders only accept integer values??
-        xyNoiseLabel = QtGui.QLabel("XY noise", self)
+        xy_noiseLabel = QtGui.QLabel("XY noise", self)
         # xy input field
-        self.xyNoiseField = QtGui.QLineEdit(str(self.xyNoise))
-        self.xyNoiseField.editingFinished.connect(self.noise_field_change)
-        xyNoiseMax = 10.0
-        xyNoiseValidator = QtGui.QDoubleValidator(0.0, xyNoiseMax, 1, self)
-        self.xyNoiseField.setValidator(xyNoiseValidator)
-        self.xyNoiseField.setMaxLength(len(str(xyNoiseMax)))
+        self.xy_noiseField = QtGui.QLineEdit(str(self.xy_noise))
+        self.xy_noiseField.editingFinished.connect(self.noise_field_change)
+        xy_noiseMax = 10.0
+        xy_noiseValidator = QtGui.QDoubleValidator(0.0, xy_noiseMax, 1, self)
+        self.xy_noiseField.setValidator(xy_noiseValidator)
+        self.xy_noiseField.setMaxLength(len(str(xy_noiseMax)))
         # xy slider
-        self.xyNoiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.xyNoiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.xyNoiseSlider.setMinimum(0)
-        self.xyNoiseSlider.setMaximum(10*xyNoiseMax)
-        self.xyNoiseSlider.setTickInterval(5)
-        self.xyNoiseSlider.setValue(10*self.xyNoise)
-        self.xyNoiseSlider.valueChanged.connect(self.noise_slider_change)
+        self.xy_noiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.xy_noiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.xy_noiseSlider.setMinimum(0)
+        self.xy_noiseSlider.setMaximum(10*xy_noiseMax)
+        self.xy_noiseSlider.setTickInterval(5)
+        self.xy_noiseSlider.setValue(10*self.xy_noise)
+        self.xy_noiseSlider.valueChanged.connect(self.noise_slider_change)
 
         # theta noise
-        thetaNoiseLabel = QtGui.QLabel("Theta noise", self)
+        t_noiseLabel = QtGui.QLabel("Theta noise", self)
         # theta input field
-        self.thetaNoiseField = QtGui.QLineEdit(str(self.thetaNoise))
-        self.thetaNoiseField.editingFinished.connect(self.noise_field_change)
-        thetaNoiseMax = 5.0
-        thetaNoiseValidator = QtGui.QDoubleValidator(
-          0.0, thetaNoiseMax, 1, self)
-        self.thetaNoiseField.setValidator(thetaNoiseValidator)
-        self.thetaNoiseField.setMaxLength(len(str(thetaNoiseMax)))
+        self.t_noiseField = QtGui.QLineEdit(str(self.t_noise))
+        self.t_noiseField.editingFinished.connect(self.noise_field_change)
+        t_noiseMax = 5.0
+        t_noiseValidator = QtGui.QDoubleValidator(
+          0.0, t_noiseMax, 1, self)
+        self.t_noiseField.setValidator(t_noiseValidator)
+        self.t_noiseField.setMaxLength(len(str(t_noiseMax)))
         # theta slider
-        self.thetaNoiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.thetaNoiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.thetaNoiseSlider.setMinimum(0)
-        self.thetaNoiseSlider.setMaximum(10*thetaNoiseMax)
-        self.thetaNoiseSlider.setTickInterval(5)
-        self.thetaNoiseSlider.setValue(10*self.thetaNoise)
-        self.thetaNoiseSlider.valueChanged.connect(self.noise_slider_change)
+        self.t_noiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.t_noiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.t_noiseSlider.setMinimum(0)
+        self.t_noiseSlider.setMaximum(10*t_noiseMax)
+        self.t_noiseSlider.setTickInterval(5)
+        self.t_noiseSlider.setValue(10*self.t_noise)
+        self.t_noiseSlider.valueChanged.connect(self.noise_slider_change)
 
         # draw particles
         self.particleDetailCheckbox = QtGui.QCheckBox(
@@ -918,14 +914,14 @@ class RobotGUI(QtGui.QMainWindow):
         mclLayout = QtGui.QGridLayout()
         mclGroup.setLayout(mclLayout)
         mclWidgetsToAdd = [
-                        (numParticlesLabel, 3, 0),
-                   (self.numParticlesField, 3, 1),
-                             (xyNoiseLabel, 5, 0),
-                        (self.xyNoiseField, 5, 1),
-                       (self.xyNoiseSlider, 6, 0, 1, 2),
-                          (thetaNoiseLabel, 7, 0),
-                     (self.thetaNoiseField, 7, 1),
-                    (self.thetaNoiseSlider, 8, 0, 1, 2),
+                        (num_particlesLabel, 3, 0),
+                   (self.num_particlesField, 3, 1),
+                             (xy_noiseLabel, 5, 0),
+                        (self.xy_noiseField, 5, 1),
+                       (self.xy_noiseSlider, 6, 0, 1, 2),
+                          (t_noiseLabel, 7, 0),
+                     (self.t_noiseField, 7, 1),
+                    (self.t_noiseSlider, 8, 0, 1, 2),
               (self.particleDetailCheckbox, 9, 0, 1, 2),
             (self.particleColoringCheckbox, 10, 0, 1, 2)
         ]
@@ -975,13 +971,13 @@ class RobotGUI(QtGui.QMainWindow):
             
     def mouseDoubleClickEvent(self, event):
         """Can double click on MCL particles to show info"""
-        if self.make_mcl == 2 and self.imageBox == self.childAt(event.pos()):
+        if self.make_mcl == 2 and self.image_box == self.childAt(event.pos()):
             relative_click_pos = (
               event.x()-self.leftDock.width()-6,
               event.y() - (max(
                 self.leftDock.height(), self.rightDock.height())-self.height)/2
             )
-            closest_distance = self.particleRadius + 1
+            closest_distance = self.particle_radius + 1
             for p in self.particles:
                 distance = math.hypot(
                   relative_click_pos[0] - p.x['draw'],
@@ -991,7 +987,7 @@ class RobotGUI(QtGui.QMainWindow):
                     # will be selected
                     closest_distance = distance
                     Particle.selected = p
-            if closest_distance == self.particleRadius + 1:
+            if closest_distance == self.particle_radius + 1:
                 Particle.selected = None
 
     def redraw_callback(self):
@@ -1041,7 +1037,7 @@ class RobotGUI(QtGui.QMainWindow):
         # to, but for now let's just display the window.
         image = self.display_update(image)
         self.resize(self.width, self.height)
-        self.imageBox.setPixmap(image)
+        self.image_box.setPixmap(image)
 
         # Status bar displays charge level by default
         if (not self.statusBar().currentMessage() or 
@@ -1055,8 +1051,8 @@ class RobotGUI(QtGui.QMainWindow):
                 random.uniform(-self.width/2, self.width/2),
                 random.uniform(-self.height/2, self.height/2),
                 random.uniform(0, 360),
-                1.0 / self.numParticles)
-              for i in xrange(self.numParticles)]
+                1.0 / self.num_particles)
+              for i in xrange(self.num_particles)]
         else:
             for p in self.particles:
                 p.update_draw(self.width, self.height)
@@ -1085,12 +1081,12 @@ class RobotGUI(QtGui.QMainWindow):
                 # resampling creates an entirely new list of particles
                 # based on the probabilities from the old generation
                 newGen = []
-                cumulativeProb = [math.fsum([p.prob for p in self.particles][i::-1]) for i in xrange(self.numParticles)]
+                cumulativeProb = [math.fsum([p.prob for p in self.particles][i::-1]) for i in xrange(self.num_particles)]
                 counter = 0
-                for i in xrange(self.numParticles):
+                for i in xrange(self.num_particles):
                     # step through probability "blocks" of particle list
                     newGen.append(self.particles[counter])
-                    while (i*oldSumProb/self.numParticles >
+                    while (i*oldSumProb/self.num_particles >
                             cumulativeProb[counter]):
                         counter += 1
                 newSumProb = math.fsum([p.prob for p in newGen])
@@ -1098,7 +1094,7 @@ class RobotGUI(QtGui.QMainWindow):
                 for p in self.particles:
                     # resampled particles' probabilities normalized
                     p.finish_resample(
-                      self.xyNoise, self.thetaNoise, newSumProb)
+                      self.xy_noise, self.t_noise, newSumProb)
         
     def particle_info_update(self):
         """Updates particle info widget box"""
@@ -1175,9 +1171,9 @@ class RobotGUI(QtGui.QMainWindow):
                     painter.drawEllipse(x, y, 1, 1)
         # drawing particles
         if self.make_mcl == 2:
-            self.particleRadius = (3 if self.particleDetailCheckbox.isChecked()
+            self.particle_radius = (3 if self.particleDetailCheckbox.isChecked()
               else 2)
-            selected_radius = self.particleRadius + 2
+            selected_radius = self.particle_radius + 2
             get_color = (self.calculate_color if
                 self.particleColoringCheckbox.isChecked() else
                 lambda x, y, z: QtGui.QColor("darkGray"))
@@ -1186,7 +1182,7 @@ class RobotGUI(QtGui.QMainWindow):
                 painter.setPen(color)
                 painter.setBrush(color)
                 painter.drawEllipse(QtCore.QPoint(p.x['draw'], p.y['draw']), 
-                  self.particleRadius, self.particleRadius)
+                  self.particle_radius, self.particle_radius)
             if self.particleDetailCheckbox.isChecked():
                 # draws particle sensor locations and particle heading
                 for p in self.particles:
@@ -1196,7 +1192,7 @@ class RobotGUI(QtGui.QMainWindow):
                         painter.drawPoint(s.x, s.y)
                     painter.drawLine(self.calculate_pointer(
                       p.x['draw'], p.y['draw'], p.t['display'],
-                      self.particleRadius + 3, 4))
+                      self.particle_radius + 3, 4))
             if Particle.selected is not None:
                 # determine color and draw particle
                 color = self.calculate_color(Particle.selected, 255, 255)
@@ -1214,7 +1210,7 @@ class RobotGUI(QtGui.QMainWindow):
                 # draw pointer
                 painter.drawLine(self.calculate_pointer(
                   Particle.selected.x['draw'], Particle.selected.y['draw'],
-                  Particle.selected.t['display'], self.particleRadius + 5, 6))
+                  Particle.selected.t['display'], self.particle_radius + 5, 6))
         # drawing robot trail
         if self.make_trail == 2 and len(self.trail) >= 2:
             painter.setPen(QtGui.QColor(255, 0, 0))
@@ -1261,7 +1257,7 @@ class RobotGUI(QtGui.QMainWindow):
           lambda q: near >= abs(q.x['display'] - p.x['display']) and
                     near >= abs(q.y['display'] - p.y['display']),
           self.particles))
-        hue = 300 * (1 - numClosePoints/(self.numParticles*0.75))
+        hue = 300 * (1 - numClosePoints/(self.num_particles*0.75))
         if hue < 0.0: hue = 0
         if hue > 300.0: hue = 300
         return QtGui.QColor.fromHsv(hue, saturation, value)
@@ -1272,30 +1268,30 @@ class RobotGUI(QtGui.QMainWindow):
     def noise_slider_change(self):
         """Slot for noise sliders"""
         sender = self.sender()
-        if sender == self.xyNoiseSlider:
-            self.xyNoise = self.xyNoiseSlider.value() / 10.0
-            self.xyNoiseField.setText(str(self.xyNoise))
-        elif sender == self.thetaNoiseSlider:
-            self.thetaNoise = self.thetaNoiseSlider.value() / 10.0
-            self.thetaNoiseField.setText(str(self.thetaNoise))
+        if sender == self.xy_noiseSlider:
+            self.xy_noise = self.xy_noiseSlider.value() / 10.0
+            self.xy_noiseField.setText(str(self.xy_noise))
+        elif sender == self.t_noiseSlider:
+            self.t_noise = self.t_noiseSlider.value() / 10.0
+            self.t_noiseField.setText(str(self.t_noise))
 
     def noise_field_change(self):
         """Slot for noise text fields"""
         sender = self.sender()
-        if sender == self.xyNoiseField:
-            self.xyNoise = float(self.xyNoiseField.text())
-            self.xyNoiseSlider.blockSignals(True)
-            self.xyNoiseSlider.setSliderPosition(10 * self.xyNoise)
-            self.xyNoiseSlider.blockSignals(False)
-        elif sender == self.thetaNoiseField:
-            self.thetaNoise = float(self.thetaNoiseField.text())
-            self.thetaNoiseSlider.blockSignals(True)
-            self.thetaNoiseSlider.setSliderPosition(10 * self.thetaNoise)
-            self.thetaNoiseSlider.blockSignals(False)
+        if sender == self.xy_noiseField:
+            self.xy_noise = float(self.xy_noiseField.text())
+            self.xy_noiseSlider.blockSignals(True)
+            self.xy_noiseSlider.setSliderPosition(10 * self.xy_noise)
+            self.xy_noiseSlider.blockSignals(False)
+        elif sender == self.t_noiseField:
+            self.t_noise = float(self.t_noiseField.text())
+            self.t_noiseSlider.blockSignals(True)
+            self.t_noiseSlider.setSliderPosition(10 * self.t_noise)
+            self.t_noiseSlider.blockSignals(False)
 
     def num_particles_set(self):
-        """receives editingFinished signal from numParticlesField"""
-        self.numParticles = int(self.numParticlesField.text())
+        """receives editingFinished signal from num_particlesField"""
+        self.num_particles = int(self.num_particlesField.text())
 
     ###
     # Light sensor slot
@@ -1324,7 +1320,7 @@ class RobotGUI(QtGui.QMainWindow):
         dialog.setViewMode(QtGui.QFileDialog.Detail)
         fname, _ = dialog.getSaveFileName(
           self, "Save image", "/home/robotics/Desktop/", "*.png")
-        saving = self.imageBox.pixmap().toImage()
+        saving = self.image_box.pixmap().toImage()
         if not saving.isNull() and fname:
             if fname[-4:] != ".png":
                 fname += ".png"
@@ -1409,9 +1405,9 @@ class RobotGUI(QtGui.QMainWindow):
         elif sender == self.y_offset_slider:
             D.robot.y['offset'] = self.y_offset_slider.value()
             self.y_offset_field.setText(str(D.robot.y['offset']))
-        elif sender == self.theta_offset_slider:
-            D.robot.t['offset'] = self.theta_offset_slider.value()
-            self.theta_offset_field.setText(str(D.robot.t['offset']))
+        elif sender == self.t_offset_slider:
+            D.robot.t['offset'] = self.t_offset_slider.value()
+            self.t_offset_field.setText(str(D.robot.t['offset']))
             D.robot.pivot = (D.robot.x['prev'], D.robot.y['prev'])
         self.erase_trail()
         self.erase_mcl()
@@ -1429,11 +1425,11 @@ class RobotGUI(QtGui.QMainWindow):
             self.y_offset_slider.blockSignals(True)
             self.y_offset_slider.setSliderPosition(D.robot.y['offset'])
             self.y_offset_slider.blockSignals(False)
-        elif sender == self.theta_offset_field:
-            D.robot.t['offset'] = int(self.theta_offset_field.text())
-            self.theta_offset_slider.blockSignals(True)
-            self.theta_offset_slider.setSliderPosition(D.robot.t['offset'])
-            self.theta_offset_slider.blockSignals(False)
+        elif sender == self.t_offset_field:
+            D.robot.t['offset'] = int(self.t_offset_field.text())
+            self.t_offset_slider.blockSignals(True)
+            self.t_offset_slider.setSliderPosition(D.robot.t['offset'])
+            self.t_offset_slider.blockSignals(False)
             D.robot.pivot = (D.robot.x['prev'], D.robot.y['prev'])
         self.erase_trail()
         self.erase_mcl()
