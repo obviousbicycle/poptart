@@ -362,17 +362,17 @@ class RobotGUI(QtGui.QMainWindow):
         light sensor data from sensorPacket, and displays MCL
         particle info
         """
-        leftTabs = QtGui.QTabWidget(self)
+        left_tabs = QtGui.QTabWidget(self)
 
         # Tab for displaying position info and virtual control buttons
-        positionGroup = QtGui.QWidget(self)
+        position_group = QtGui.QWidget(self)
         # Coordinate display
-        xLabel = QtGui.QLabel("X (" + USE_CM*"c" + "m): ", self)
-        self.xValue = QtGui.QLabel(self)
-        yLabel = QtGui.QLabel("Y (" + USE_CM*"c" + "m): ", self)
-        self.yValue = QtGui.QLabel(self)
-        thetaLabel = QtGui.QLabel("Theta (deg): ", self)
-        self.thetaValue = QtGui.QLabel(self)
+        x_label = QtGui.QLabel("X (" + USE_CM*"c" + "m): ", self)
+        self.x_value = QtGui.QLabel(self)
+        y_label = QtGui.QLabel("Y (" + USE_CM*"c" + "m): ", self)
+        self.y_value = QtGui.QLabel(self)
+        t_label = QtGui.QLabel("Theta (deg): ", self)
+        self.t_value = QtGui.QLabel(self)
         # Coordinate reset buttons
         self.x_reset_button = QtGui.QPushButton("Reset", self)
         self.x_reset_button.clicked.connect(self.position_reset)
@@ -421,9 +421,9 @@ class RobotGUI(QtGui.QMainWindow):
         self.turn_right_button.clicked.connect(self.virtual_move)
         self.virtual_group = QtGui.QWidget(self)
         # Assembling virtual control subsublayout
-        virtualLayout = QtGui.QGridLayout()
-        self.virtual_group.setLayout(virtualLayout)
-        virtualWidgetsToAdd = [
+        virtual_layout = QtGui.QGridLayout()
+        self.virtual_group.setLayout(virtual_layout)
+        virtual_widgets_to_add = [
                    (self.step_label, 2, 2, QtCore.Qt.AlignRight),
              (self.step_meter_field, 2, 4, QtCore.Qt.AlignHCenter),
              (self.step_meter_label, 2, 5, QtCore.Qt.AlignHCenter),
@@ -434,66 +434,65 @@ class RobotGUI(QtGui.QMainWindow):
             (self.turn_right_button, 4, 7, 2, 2, QtCore.Qt.AlignHCenter),
               (self.backward_button, 5, 4, 1, 2, QtCore.Qt.AlignHCenter),
         ]
-        for args in virtualWidgetsToAdd: virtualLayout.addWidget(*args)
-        virtualLayout.setColumnMinimumWidth(3, WIDGET_SPACING)
-        virtualLayout.setColumnMinimumWidth(6, WIDGET_SPACING)
-        virtualLayout.setColumnStretch(0, 1)
-        virtualLayout.setColumnStretch(20, 1)
+        for args in virtual_widgets_to_add: virtual_layout.addWidget(*args)
+        virtual_layout.setColumnMinimumWidth(3, WIDGET_SPACING)
+        virtual_layout.setColumnMinimumWidth(6, WIDGET_SPACING)
+        virtual_layout.setColumnStretch(0, 1)
+        virtual_layout.setColumnStretch(20, 1)
         # Assembling position info sublayout
         physical_group = QtGui.QWidget(self)
-        physicalLayout = QtGui.QGridLayout()
-        physical_group.setLayout(physicalLayout)
-        physicalWidgetsToAdd = [
-            (xLabel, 1, 1, QtCore.Qt.AlignRight),
-            (self.xValue, 1, 2),
+        physical_layout = QtGui.QGridLayout()
+        physical_group.setLayout(physical_layout)
+        physical_widgets_to_add = [
+            (x_label, 1, 1, QtCore.Qt.AlignRight),
+            (self.x_value, 1, 2),
             (self.x_reset_button, 2, 1, 1, 2, QtCore.Qt.AlignHCenter),
-            (yLabel, 4, 1, QtCore.Qt.AlignRight),
-            (self.yValue, 4, 2),
+            (y_label, 4, 1, QtCore.Qt.AlignRight),
+            (self.y_value, 4, 2),
             (self.y_reset_button, 5, 1, 1, 2, QtCore.Qt.AlignHCenter),
-            (thetaLabel, 1, 4, QtCore.Qt.AlignRight),
-            (self.thetaValue, 1, 5),
+            (t_label, 1, 4, QtCore.Qt.AlignRight),
+            (self.t_value, 1, 5),
             (self.theta_reset_button, 2, 4, 1, 2, QtCore.Qt.AlignHCenter),
             (self.all_reset_button, 4, 4, 2, 2, QtCore.Qt.AlignHCenter),
             (self.virtual_control_checkbox, 7, 1, 1, 5),
             (self.virtual_group, 8, 1, 1, 5)
         ]
-        for args in physicalWidgetsToAdd: physicalLayout.addWidget(*args)
-        physicalLayout.setColumnMinimumWidth(3, WIDGET_SPACING)
-        physicalLayout.setRowMinimumHeight(6, WIDGET_SPACING)
-        physicalLayout.setColumnStretch(0, 1)
-        physicalLayout.setColumnStretch(6, 1)
-        physicalLayout.addWidget
-        # Assembling layout for positionGroup
-        positionLayout = QtGui.QGridLayout()
-        positionGroup.setLayout(physicalLayout)
+        for args in physical_widgets_to_add: physical_layout.addWidget(*args)
+        physical_layout.setColumnMinimumWidth(3, WIDGET_SPACING)
+        physical_layout.setRowMinimumHeight(6, WIDGET_SPACING)
+        physical_layout.setColumnStretch(0, 1)
+        physical_layout.setColumnStretch(6, 1)
+        physical_layout.addWidget
+        # Assembling layout for position_group
+        position_group.setLayout(physical_layout)
         # Virtual control initially set to off
         self.virtual_control_toggle()
 
         # IR light sensor info tab
-        lightGroup = QtGui.QWidget(self)
-        positionLabel = QtGui.QLabel("Position", self)
-        readingsLabel = QtGui.QLabel("Readings", self)
-        lowerThresholdsLabel = QtGui.QLabel("Lower\nthresholds", self)
-        lowerThresholdsLabel.setAlignment(QtCore.Qt.AlignHCenter)
-        upperThresholdsLabel = QtGui.QLabel("Upper\nthresholds", self)
-        upperThresholdsLabel.setAlignment(QtCore.Qt.AlignHCenter)
-        backLeftLabel = QtGui.QLabel("Back\nleft", self)
-        backLeftLabel.setAlignment(QtCore.Qt.AlignHCenter)
-        frontLeftLabel = QtGui.QLabel("Front\nleft", self)
-        frontLeftLabel.setAlignment(QtCore.Qt.AlignHCenter)
-        frontRightLabel = QtGui.QLabel("Front\nright", self)
-        frontRightLabel.setAlignment(QtCore.Qt.AlignHCenter)
-        backRightLabel = QtGui.QLabel("Back\nright", self)
-        backRightLabel.setAlignment(QtCore.Qt.AlignHCenter)
+        light_group = QtGui.QWidget(self)
+        position_label = QtGui.QLabel("Position", self)
+        readings_label = QtGui.QLabel("Readings", self)
+        lower_thresholds_label = QtGui.QLabel("Lower\nthresholds", self)
+        lower_thresholds_label.setAlignment(QtCore.Qt.AlignHCenter)
+        upper_thresholds_label = QtGui.QLabel("Upper\nthresholds", self)
+        upper_thresholds_label.setAlignment(QtCore.Qt.AlignHCenter)
+        back_left_label = QtGui.QLabel("Back\nleft", self)
+        back_left_label.setAlignment(QtCore.Qt.AlignHCenter)
+        front_left_label = QtGui.QLabel("Front\nleft", self)
+        front_left_label.setAlignment(QtCore.Qt.AlignHCenter)
+        front_right_label = QtGui.QLabel("Front\nright", self)
+        front_right_label.setAlignment(QtCore.Qt.AlignHCenter)
+        back_right_label = QtGui.QLabel("Back\nright", self)
+        back_right_label.setAlignment(QtCore.Qt.AlignHCenter)
         # Display values
-        self.backLeftPosition = QtGui.QLabel(self)
-        self.frontLeftPosition = QtGui.QLabel(self)
-        self.frontRightPosition = QtGui.QLabel(self)
-        self.backRightPosition = QtGui.QLabel(self)
-        self.backLeftValue = QtGui.QLabel(self)
-        self.frontLeftValue = QtGui.QLabel(self)
-        self.frontRightValue = QtGui.QLabel(self)
-        self.backRightValue = QtGui.QLabel(self)
+        self.back_left_position = QtGui.QLabel(self)
+        self.front_left_position = QtGui.QLabel(self)
+        self.front_right_position = QtGui.QLabel(self)
+        self.back_right_position = QtGui.QLabel(self)
+        self.back_left_value = QtGui.QLabel(self)
+        self.front_left_value = QtGui.QLabel(self)
+        self.front_right_value = QtGui.QLabel(self)
+        self.back_right_value = QtGui.QLabel(self)
         # Light threshold entry
         validator = QtGui.QIntValidator(0, 9999, self)
         self.backLeftLowerField = QtGui.QLineEdit(
@@ -521,32 +520,32 @@ class RobotGUI(QtGui.QMainWindow):
         for f in light_fields:
             f.editingFinished.connect(self.light_threshold_set)
             f.setValidator(validator)
-        # Assembling layout for lightGroup
+        # Assembling layout for light_group
         lightLayout = QtGui.QGridLayout()
-        lightGroup.setLayout(lightLayout)
+        light_group.setLayout(lightLayout)
         lightWidgetsToAdd = [
-                        (positionLabel, 1, 3, QtCore.Qt.AlignHCenter),
-                        (readingsLabel, 1, 5, QtCore.Qt.AlignHCenter),
-                 (lowerThresholdsLabel, 1, 7, QtCore.Qt.AlignHCenter),
-                 (upperThresholdsLabel, 1, 9, QtCore.Qt.AlignHCenter),
-                        (backLeftLabel, 3, 1, QtCore.Qt.AlignRight),
-                (self.backLeftPosition, 3, 3, QtCore.Qt.AlignHCenter),
-                   (self.backLeftValue, 3, 5, QtCore.Qt.AlignHCenter),
+                        (position_label, 1, 3, QtCore.Qt.AlignHCenter),
+                        (readings_label, 1, 5, QtCore.Qt.AlignHCenter),
+                 (lower_thresholds_label, 1, 7, QtCore.Qt.AlignHCenter),
+                 (upper_thresholds_label, 1, 9, QtCore.Qt.AlignHCenter),
+                        (back_left_label, 3, 1, QtCore.Qt.AlignRight),
+                (self.back_left_position, 3, 3, QtCore.Qt.AlignHCenter),
+                   (self.back_left_value, 3, 5, QtCore.Qt.AlignHCenter),
               (self.backLeftLowerField, 3, 7, QtCore.Qt.AlignHCenter),
               (self.backLeftUpperField, 3, 9, QtCore.Qt.AlignHCenter),
-                       (frontLeftLabel, 5, 1, QtCore.Qt.AlignRight),
-               (self.frontLeftPosition, 5, 3, QtCore.Qt.AlignHCenter),
-                  (self.frontLeftValue, 5, 5, QtCore.Qt.AlignHCenter),
+                       (front_left_label, 5, 1, QtCore.Qt.AlignRight),
+               (self.front_left_position, 5, 3, QtCore.Qt.AlignHCenter),
+                  (self.front_left_value, 5, 5, QtCore.Qt.AlignHCenter),
              (self.frontLeftLowerField, 5, 7, QtCore.Qt.AlignHCenter),
              (self.frontLeftUpperField, 5, 9, QtCore.Qt.AlignHCenter),
-                      (frontRightLabel, 7, 1, QtCore.Qt.AlignRight),
-              (self.frontRightPosition, 7, 3, QtCore.Qt.AlignHCenter),
-                 (self.frontRightValue, 7, 5, QtCore.Qt.AlignHCenter),
+                      (front_right_label, 7, 1, QtCore.Qt.AlignRight),
+              (self.front_right_position, 7, 3, QtCore.Qt.AlignHCenter),
+                 (self.front_right_value, 7, 5, QtCore.Qt.AlignHCenter),
             (self.frontRightLowerField, 7, 7, QtCore.Qt.AlignHCenter),
             (self.frontRightUpperField, 7, 9, QtCore.Qt.AlignHCenter),
-                       (backRightLabel, 9, 1, QtCore.Qt.AlignRight),
-               (self.backRightPosition, 9, 3, QtCore.Qt.AlignHCenter),
-                  (self.backRightValue, 9, 5, QtCore.Qt.AlignHCenter),
+                       (back_right_label, 9, 1, QtCore.Qt.AlignRight),
+               (self.back_right_position, 9, 3, QtCore.Qt.AlignHCenter),
+                  (self.back_right_value, 9, 5, QtCore.Qt.AlignHCenter),
              (self.backRightLowerField, 9, 7, QtCore.Qt.AlignHCenter),
              (self.backRightUpperField, 9, 9, QtCore.Qt.AlignHCenter)
         ]
@@ -663,15 +662,15 @@ class RobotGUI(QtGui.QMainWindow):
         self.particle_layout.setCurrentWidget(self.off_label)
 
         # Putting everything together
-        leftTabs.addTab(positionGroup, "Position")
-        leftTabs.addTab(lightGroup, "IR sensors")
-        leftTabs.addTab(particle_group, "Particles")
-        leftTabs.setMinimumWidth(450)
+        left_tabs.addTab(position_group, "Position")
+        left_tabs.addTab(light_group, "IR sensors")
+        left_tabs.addTab(particle_group, "Particles")
+        left_tabs.setMinimumWidth(450)
         self.leftDock = QtGui.QDockWidget("", self)
         self.leftDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
         self.leftDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
         self.leftDock.setTitleBarWidget(QtGui.QWidget(self))
-        self.leftDock.setWidget(leftTabs)
+        self.leftDock.setWidget(left_tabs)
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.leftDock)
 
     def init_right(self):
@@ -959,9 +958,9 @@ class RobotGUI(QtGui.QMainWindow):
 
         # Update robot display and info
         D.robot.update_display()
-        self.thetaValue.setText('{:.1f}'.format(D.robot.t['display']))
-        self.xValue.setText('{:.2f}'.format(D.robot.x['display']))
-        self.yValue.setText('{:.2f}'.format(D.robot.y['display']))
+        self.t_value.setText('{:.1f}'.format(D.robot.t['display']))
+        self.x_value.setText('{:.2f}'.format(D.robot.x['display']))
+        self.y_value.setText('{:.2f}'.format(D.robot.y['display']))
         D.robot.update_draw(self.width, self.height)
         location = (D.robot.x['draw'], D.robot.y['draw'], D.robot.t['display'])
         if not self.trail or location != self.trail[-1]:
@@ -971,18 +970,18 @@ class RobotGUI(QtGui.QMainWindow):
 
         # Set sensor info display
         sensor_global = D.robot.get_sensor_global_position()
-        self.backLeftPosition.setText('({:.2f}, {:.2f})'.format(
+        self.back_left_position.setText('({:.2f}, {:.2f})'.format(
           sensor_global[0].x, sensor_global[0].y))
-        self.frontLeftPosition.setText('({:.2f}, {:.2f})'.format(
+        self.front_left_position.setText('({:.2f}, {:.2f})'.format(
           sensor_global[1].x, sensor_global[1].y))
-        self.frontRightPosition.setText('({:.2f}, {:.2f})'.format(
+        self.front_right_position.setText('({:.2f}, {:.2f})'.format(
           sensor_global[2].x, sensor_global[2].y))
-        self.backRightPosition.setText('({:.2f}, {:.2f})'.format(
+        self.back_right_position.setText('({:.2f}, {:.2f})'.format(
           sensor_global[3].x, sensor_global[3].y))
-        self.backLeftValue.setText(str(D.robot.sensors[0].light))
-        self.frontLeftValue.setText(str(D.robot.sensors[1].light))
-        self.frontRightValue.setText(str(D.robot.sensors[2].light))
-        self.backRightValue.setText(str(D.robot.sensors[3].light))
+        self.back_left_value.setText(str(D.robot.sensors[0].light))
+        self.front_left_value.setText(str(D.robot.sensors[1].light))
+        self.front_right_value.setText(str(D.robot.sensors[2].light))
+        self.back_right_value.setText(str(D.robot.sensors[3].light))
 
         if self.make_mcl:
            self.mcl_update()
@@ -1041,7 +1040,7 @@ class RobotGUI(QtGui.QMainWindow):
                 for i in xrange(self.num_particles):
                     # Step through probability "blocks" of particle list
                     newGen.append(self.particles[counter])
-                    while (i*oldSumProb/self.num_particles >
+                    while (i * oldSumProb / self.num_particles >
                             cumulativeProb[counter]):
                         counter += 1
                 newSumProb = math.fsum([p.prob for p in newGen])
@@ -1189,7 +1188,7 @@ class RobotGUI(QtGui.QMainWindow):
             # Pointer
             painter.drawLine(self.calculate_pointer(
               self.trail[-1][0], self.trail[-1][1],
-              float(self.thetaValue.text()), markerRadius + 3, 8))
+              float(self.t_value.text()), markerRadius + 3, 8))
         painter.end()
         return image
 
