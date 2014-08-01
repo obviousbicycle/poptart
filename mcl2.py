@@ -495,35 +495,35 @@ class RobotGUI(QtGui.QMainWindow):
         self.back_right_value = QtGui.QLabel(self)
         # Light threshold entry
         validator = QtGui.QIntValidator(0, 9999, self)
-        self.backLeftLowerField = QtGui.QLineEdit(
+        self.back_left_lower_field = QtGui.QLineEdit(
           str(self.thresholds[0]))
-        self.frontLeftLowerField = QtGui.QLineEdit(
+        self.front_left_lower_field = QtGui.QLineEdit(
           str(self.thresholds[1]))
-        self.frontRightLowerField = QtGui.QLineEdit(
+        self.front_right_lower_field = QtGui.QLineEdit(
           str(self.thresholds[2]))
-        self.backRightLowerField = QtGui.QLineEdit(
+        self.back_right_lower_field = QtGui.QLineEdit(
           str(self.thresholds[3]))
-        self.backLeftUpperField = QtGui.QLineEdit(
+        self.back_left_upper_field = QtGui.QLineEdit(
           str(self.thresholds[4]))
-        self.frontLeftUpperField = QtGui.QLineEdit(
+        self.front_left_upper_field = QtGui.QLineEdit(
           str(self.thresholds[5]))
-        self.frontRightUpperField = QtGui.QLineEdit(
+        self.front_right_upper_field = QtGui.QLineEdit(
           str(self.thresholds[6]))
-        self.backRightUpperField = QtGui.QLineEdit(
+        self.back_right_upper_field = QtGui.QLineEdit(
           str(self.thresholds[7]))
         light_fields = [
-            self.backLeftLowerField, self.frontLeftLowerField,
-            self.frontRightLowerField, self.backRightLowerField,
-            self.backLeftUpperField, self.frontLeftUpperField,
-            self.frontRightUpperField, self.backRightUpperField
+            self.back_left_lower_field, self.front_left_lower_field,
+            self.front_right_lower_field, self.back_right_lower_field,
+            self.back_left_upper_field, self.front_left_upper_field,
+            self.front_right_upper_field, self.back_right_upper_field
         ]
         for f in light_fields:
             f.editingFinished.connect(self.light_threshold_set)
             f.setValidator(validator)
         # Assembling layout for light_group
-        lightLayout = QtGui.QGridLayout()
-        light_group.setLayout(lightLayout)
-        lightWidgetsToAdd = [
+        light_layout = QtGui.QGridLayout()
+        light_group.setLayout(light_layout)
+        light_widgets_to_add = [
                         (position_label, 1, 3, QtCore.Qt.AlignHCenter),
                         (readings_label, 1, 5, QtCore.Qt.AlignHCenter),
                  (lower_thresholds_label, 1, 7, QtCore.Qt.AlignHCenter),
@@ -531,30 +531,30 @@ class RobotGUI(QtGui.QMainWindow):
                         (back_left_label, 3, 1, QtCore.Qt.AlignRight),
                 (self.back_left_position, 3, 3, QtCore.Qt.AlignHCenter),
                    (self.back_left_value, 3, 5, QtCore.Qt.AlignHCenter),
-              (self.backLeftLowerField, 3, 7, QtCore.Qt.AlignHCenter),
-              (self.backLeftUpperField, 3, 9, QtCore.Qt.AlignHCenter),
+              (self.back_left_lower_field, 3, 7, QtCore.Qt.AlignHCenter),
+              (self.back_left_upper_field, 3, 9, QtCore.Qt.AlignHCenter),
                        (front_left_label, 5, 1, QtCore.Qt.AlignRight),
                (self.front_left_position, 5, 3, QtCore.Qt.AlignHCenter),
                   (self.front_left_value, 5, 5, QtCore.Qt.AlignHCenter),
-             (self.frontLeftLowerField, 5, 7, QtCore.Qt.AlignHCenter),
-             (self.frontLeftUpperField, 5, 9, QtCore.Qt.AlignHCenter),
+             (self.front_left_lower_field, 5, 7, QtCore.Qt.AlignHCenter),
+             (self.front_left_upper_field, 5, 9, QtCore.Qt.AlignHCenter),
                       (front_right_label, 7, 1, QtCore.Qt.AlignRight),
               (self.front_right_position, 7, 3, QtCore.Qt.AlignHCenter),
                  (self.front_right_value, 7, 5, QtCore.Qt.AlignHCenter),
-            (self.frontRightLowerField, 7, 7, QtCore.Qt.AlignHCenter),
-            (self.frontRightUpperField, 7, 9, QtCore.Qt.AlignHCenter),
+            (self.front_right_lower_field, 7, 7, QtCore.Qt.AlignHCenter),
+            (self.front_right_upper_field, 7, 9, QtCore.Qt.AlignHCenter),
                        (back_right_label, 9, 1, QtCore.Qt.AlignRight),
                (self.back_right_position, 9, 3, QtCore.Qt.AlignHCenter),
                   (self.back_right_value, 9, 5, QtCore.Qt.AlignHCenter),
-             (self.backRightLowerField, 9, 7, QtCore.Qt.AlignHCenter),
-             (self.backRightUpperField, 9, 9, QtCore.Qt.AlignHCenter)
+             (self.back_right_lower_field, 9, 7, QtCore.Qt.AlignHCenter),
+             (self.back_right_upper_field, 9, 9, QtCore.Qt.AlignHCenter)
         ]
-        for args in lightWidgetsToAdd: lightLayout.addWidget(*args)
-        lightLayout.setRowStretch(10, 1)
-        lightLayout.setColumnMinimumWidth(2, WIDGET_SPACING)
-        lightLayout.setColumnMinimumWidth(4, WIDGET_SPACING)
-        lightLayout.setColumnMinimumWidth(6, WIDGET_SPACING) 
-        lightLayout.setColumnMinimumWidth(8, WIDGET_SPACING)
+        for args in light_widgets_to_add: light_layout.addWidget(*args)
+        light_layout.setRowStretch(10, 1)
+        light_layout.setColumnMinimumWidth(2, WIDGET_SPACING)
+        light_layout.setColumnMinimumWidth(4, WIDGET_SPACING)
+        light_layout.setColumnMinimumWidth(6, WIDGET_SPACING) 
+        light_layout.setColumnMinimumWidth(8, WIDGET_SPACING)
 
         # Info tab for selected MCL particle
         particle_group = QtGui.QWidget(self)
@@ -666,94 +666,94 @@ class RobotGUI(QtGui.QMainWindow):
         left_tabs.addTab(light_group, "IR sensors")
         left_tabs.addTab(particle_group, "Particles")
         left_tabs.setMinimumWidth(450)
-        self.leftDock = QtGui.QDockWidget("", self)
-        self.leftDock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
-        self.leftDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        self.leftDock.setTitleBarWidget(QtGui.QWidget(self))
-        self.leftDock.setWidget(left_tabs)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.leftDock)
+        self.left_dock = QtGui.QDockWidget("", self)
+        self.left_dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea)
+        self.left_dock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        self.left_dock.setTitleBarWidget(QtGui.QWidget(self))
+        self.left_dock.setWidget(left_tabs)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.left_dock)
 
     def init_right(self):
-        """Right Dock Widget: displayGroup, parameterGroup, actionGroup
-        displayGroup changes settings and stuff
+        """Right Dock Widget: display_group, parameterGroup, actionGroup
+        display_group changes settings and stuff
         parameterGroup changes parameters and stuff
         actionGroup has image actions
         """
-        rightTabs = QtGui.QTabWidget(self)
+        right_tabs = QtGui.QTabWidget(self)
 
         # Image display settings tab
-        displayGroup = QtGui.QWidget(self)
-        self.robotMarkerCheckbox = QtGui.QCheckBox("Robot marker", self)
-        self.robotMarkerCheckbox.setChecked(True)
-        self.axesCheckbox = QtGui.QCheckBox("Axes", self)
-        self.gridCheckbox = QtGui.QCheckBox("Grid", self)
+        display_group = QtGui.QWidget(self)
+        self.robot_marker_checkbox = QtGui.QCheckBox("Robot marker", self)
+        self.robot_marker_checkbox.setChecked(True)
+        self.axes_checkbox = QtGui.QCheckBox("Axes", self)
+        self.grid_checkbox = QtGui.QCheckBox("Grid", self)
         # Trail draw settings
-        trailLabel = QtGui.QLabel("Robot trail", self)
-        self.showTrailButton = QtGui.QRadioButton("Show", self)
-        self.showTrailButton.clicked.connect(self.set_trail)
-        self.hideTrailButton = QtGui.QRadioButton("Hide", self)
-        self.hideTrailButton.clicked.connect(self.set_trail)
-        self.noTrailButton = QtGui.QRadioButton("Off", self)
-        self.noTrailButton.clicked.connect(self.set_trail)
-        self.eraseTrailButton = QtGui.QPushButton("Erase", self)
-        self.eraseTrailButton.clicked.connect(self.erase_trail)
+        trail_label = QtGui.QLabel("Robot trail", self)
+        self.show_trail_button = QtGui.QRadioButton("Show", self)
+        self.show_trail_button.clicked.connect(self.set_trail)
+        self.hide_trail_button = QtGui.QRadioButton("Hide", self)
+        self.hide_trail_button.clicked.connect(self.set_trail)
+        self.no_trail_button = QtGui.QRadioButton("Off", self)
+        self.no_trail_button.clicked.connect(self.set_trail)
+        self.erase_trail_button = QtGui.QPushButton("Erase", self)
+        self.erase_trail_button.clicked.connect(self.erase_trail)
         # Limit radio button choices to trail-related buttons
-        trailGroup = QtGui.QButtonGroup(self)
-        trailGroup.addButton(self.showTrailButton)
-        trailGroup.addButton(self.hideTrailButton)
-        trailGroup.addButton(self.noTrailButton)
+        trail_group = QtGui.QButtonGroup(self)
+        trail_group.addButton(self.show_trail_button)
+        trail_group.addButton(self.hide_trail_button)
+        trail_group.addButton(self.no_trail_button)
         # MCL draw settings
-        MCLLabel = QtGui.QLabel("Monte Carlo", self)
-        self.showMCLButton = QtGui.QRadioButton("Show", self)
-        self.showMCLButton.clicked.connect(self.set_mcl)
-        self.hideMCLButton = QtGui.QRadioButton("Hide", self)
-        self.hideMCLButton.clicked.connect(self.set_mcl)
-        self.noMCLButton = QtGui.QRadioButton("Off", self)
-        self.noMCLButton.clicked.connect(self.set_mcl)
-        self.eraseMCLButton = QtGui.QPushButton("Erase", self)
-        self.eraseMCLButton.clicked.connect(self.erase_mcl)
+        mcl_label = QtGui.QLabel("Monte Carlo", self)
+        self.show_mcl_button = QtGui.QRadioButton("Show", self)
+        self.show_mcl_button.clicked.connect(self.set_mcl)
+        self.hide_mcl_button = QtGui.QRadioButton("Hide", self)
+        self.hide_mcl_button.clicked.connect(self.set_mcl)
+        self.no_mcl_button = QtGui.QRadioButton("Off", self)
+        self.no_mcl_button.clicked.connect(self.set_mcl)
+        self.erase_mcl_button = QtGui.QPushButton("Erase", self)
+        self.erase_mcl_button.clicked.connect(self.erase_mcl)
         # Limit radio button choices to MCL-related buttons
-        MCLGroup = QtGui.QButtonGroup(self)
-        MCLGroup.addButton(self.showMCLButton)
-        MCLGroup.addButton(self.hideMCLButton)
-        MCLGroup.addButton(self.noMCLButton)
-        # Assembling layout for displayGroup
-        displayLayout = QtGui.QGridLayout()
-        displayGroup.setLayout(displayLayout)
-        displayWidgetsToAdd = [
-            (self.robotMarkerCheckbox, 1, 1, 1, 2),
-                   (self.axesCheckbox, 2, 1),
-                   (self.gridCheckbox, 2, 2),
-                          (trailLabel, 4, 1, 1, 2),
-                (self.showTrailButton, 5, 1),
-                (self.hideTrailButton, 5, 2),
-                  (self.noTrailButton, 5, 3),
-               (self.eraseTrailButton, 6, 1, 1, 3, QtCore.Qt.AlignLeft),
-                            (MCLLabel, 8, 1, 1, 2),
-                  (self.showMCLButton, 9, 1),
-                  (self.hideMCLButton, 9, 2),
-                    (self.noMCLButton, 9, 3),
-                 (self.eraseMCLButton, 10, 1, 1, 3, QtCore.Qt.AlignLeft)
+        mcl_group = QtGui.QButtonGroup(self)
+        mcl_group.addButton(self.show_mcl_button)
+        mcl_group.addButton(self.hide_mcl_button)
+        mcl_group.addButton(self.no_mcl_button)
+        # Assembling layout for display_group
+        display_layout = QtGui.QGridLayout()
+        display_group.setLayout(display_layout)
+        display_widgets_to_add = [
+            (self.robot_marker_checkbox, 1, 1, 1, 2),
+                    (self.axes_checkbox, 2, 1),
+                    (self.grid_checkbox, 2, 2),
+                           (trail_label, 4, 1, 1, 2),
+                (self.show_trail_button, 5, 1),
+                (self.hide_trail_button, 5, 2),
+                  (self.no_trail_button, 5, 3),
+               (self.erase_trail_button, 6, 1, 1, 3, QtCore.Qt.AlignLeft),
+                             (mcl_label, 8, 1, 1, 2),
+                  (self.show_mcl_button, 9, 1),
+                  (self.hide_mcl_button, 9, 2),
+                    (self.no_mcl_button, 9, 3),
+                 (self.erase_mcl_button, 10, 1, 1, 3, QtCore.Qt.AlignLeft)
         ]
-        for args in displayWidgetsToAdd: displayLayout.addWidget(*args)
-        displayLayout.setRowMinimumHeight(2, WIDGET_SPACING)
-        displayLayout.setRowMinimumHeight(6, WIDGET_SPACING)
-        displayLayout.setRowStretch(20, 1)
+        for args in display_widgets_to_add: display_layout.addWidget(*args)
+        display_layout.setRowMinimumHeight(2, WIDGET_SPACING)
+        display_layout.setRowMinimumHeight(6, WIDGET_SPACING)
+        display_layout.setRowStretch(20, 1)
         # Set initial button states
-        self.noTrailButton.setChecked(True)
-        self.noMCLButton.setChecked(True)
-        self.eraseTrailButton.setEnabled(False)
-        self.eraseMCLButton.setEnabled(False)
+        self.no_trail_button.setChecked(True)
+        self.no_mcl_button.setChecked(True)
+        self.erase_trail_button.setEnabled(False)
+        self.erase_mcl_button.setEnabled(False)
 
         # Robot marker offset tab
-        offsetGroup = QtGui.QWidget(self)
+        offset_group = QtGui.QWidget(self)
         # X offset text field
-        x_offsetLabel = QtGui.QLabel("X", self)
+        x_offset_label = QtGui.QLabel("X", self)
         self.x_offset_field = QtGui.QLineEdit("0")
         self.x_offset_field.editingFinished.connect(self.offset_field_change)
-        x_offsetValidator = QtGui.QIntValidator(
+        x_offset_validator = QtGui.QIntValidator(
           -self.width/2, self.width/2, self)
-        self.x_offset_field.setValidator(x_offsetValidator)
+        self.x_offset_field.setValidator(x_offset_validator)
         # X offset slider
         self.x_offset_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.x_offset_slider.setTickPosition(QtGui.QSlider.TicksBelow)
@@ -763,12 +763,12 @@ class RobotGUI(QtGui.QMainWindow):
         self.x_offset_slider.setValue(0)
         self.x_offset_slider.valueChanged.connect(self.offset_slider_change)
         # Y offset text field
-        y_offsetLabel = QtGui.QLabel("Y", self)
+        y_offset_label = QtGui.QLabel("Y", self)
         self.y_offset_field = QtGui.QLineEdit("0")
         self.y_offset_field.editingFinished.connect(self.offset_field_change)
-        y_offsetValidator = QtGui.QIntValidator(
+        y_offset_validator = QtGui.QIntValidator(
           -self.height / 2, self.height / 2, self)
-        self.y_offset_field.setValidator(y_offsetValidator)
+        self.y_offset_field.setValidator(y_offset_validator)
         # Y offset slider
         self.y_offset_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.y_offset_slider.setTickPosition(QtGui.QSlider.TicksBelow)
@@ -778,12 +778,12 @@ class RobotGUI(QtGui.QMainWindow):
         self.y_offset_slider.setValue(0)
         self.y_offset_slider.valueChanged.connect(self.offset_slider_change)
         # Theta offset text field
-        t_offsetLabel = QtGui.QLabel("Theta", self)
+        t_offset_label = QtGui.QLabel("Theta", self)
         self.t_offset_field = QtGui.QLineEdit("0")
         self.t_offset_field.editingFinished.connect(
           self.offset_field_change)
-        t_offsetValidator = QtGui.QIntValidator(0, 359, self)
-        self.t_offset_field.setValidator(t_offsetValidator)
+        t_offset_validator = QtGui.QIntValidator(0, 359, self)
+        self.t_offset_field.setValidator(t_offset_validator)
         # Theta offset slider
         self.t_offset_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
         self.t_offset_slider.setTickPosition(QtGui.QSlider.TicksBelow)
@@ -793,107 +793,107 @@ class RobotGUI(QtGui.QMainWindow):
         self.t_offset_slider.setValue(0)
         self.t_offset_slider.valueChanged.connect(
           self.offset_slider_change)
-        # offsetGroup layout
-        offsetLayout = QtGui.QGridLayout()
-        offsetGroup.setLayout(offsetLayout)
-        offsetWidgetsToAdd = [
-                       (x_offsetLabel, 3, 0),
+        # offset_group layout
+        offset_layout = QtGui.QGridLayout()
+        offset_group.setLayout(offset_layout)
+        offset_widgets_to_add = [
+                      (x_offset_label, 3, 0),
                  (self.x_offset_field, 3, 1),
                 (self.x_offset_slider, 4, 0, 1, 2),
-                       (y_offsetLabel, 5, 0),
+                      (y_offset_label, 5, 0),
                  (self.y_offset_field, 5, 1),
                 (self.y_offset_slider, 6, 0, 1, 2),
-                       (t_offsetLabel, 7, 0),
+                      (t_offset_label, 7, 0),
                  (self.t_offset_field, 7, 1),
                 (self.t_offset_slider, 8, 0, 1, 2)
         ]
-        for args in offsetWidgetsToAdd: offsetLayout.addWidget(*args)
-        offsetLayout.setColumnStretch(0, 1)
-        offsetLayout.setRowStretch(20, 1)
+        for args in offset_widgets_to_add: offset_layout.addWidget(*args)
+        offset_layout.setColumnStretch(0, 1)
+        offset_layout.setRowStretch(20, 1)
         
         # MCL tab
-        mclGroup = QtGui.QWidget(self)
-        num_particlesLabel = QtGui.QLabel("# particles", self)
+        mcl_group = QtGui.QWidget(self)
+        num_particles_label = QtGui.QLabel("# particles", self)
         # Number of MCL particles nput field
-        self.num_particlesField = QtGui.QLineEdit(str(self.num_particles))
-        self.num_particlesField.editingFinished.connect(self.num_particles_set)
-        num_particlesMax = self.width*self.height
-        num_particlesValidator = QtGui.QIntValidator(
-          1, num_particlesMax, self)
-        self.num_particlesField.setValidator(num_particlesValidator)
-        self.num_particlesField.setMaxLength(len(str(num_particlesMax)))
+        self.num_particles_field = QtGui.QLineEdit(str(self.num_particles))
+        self.num_particles_field.editingFinished.connect(self.num_particles_set)
+        num_particles_max = self.width*self.height
+        num_particles_validator = QtGui.QIntValidator(
+          1, num_particles_max, self)
+        self.num_particles_field.setValidator(num_particles_validator)
+        self.num_particles_field.setMaxLength(len(str(num_particles_max)))
         # XY noise text field
         # Apparently sliders only accept integer values??
-        xy_noiseLabel = QtGui.QLabel("XY noise", self)
-        self.xy_noiseField = QtGui.QLineEdit(str(self.xy_noise))
-        self.xy_noiseField.editingFinished.connect(self.noise_field_change)
-        xy_noiseMax = 10.0
-        xy_noiseValidator = QtGui.QDoubleValidator(
-          0.0, xy_noiseMax, 1, self)
-        self.xy_noiseField.setValidator(xy_noiseValidator)
-        self.xy_noiseField.setMaxLength(len(str(xy_noiseMax)))
+        xy_noise_label = QtGui.QLabel("XY noise", self)
+        self.xy_noise_field = QtGui.QLineEdit(str(self.xy_noise))
+        self.xy_noise_field.editingFinished.connect(self.noise_field_change)
+        xy_noise_max = 10.0
+        xy_noise_validator = QtGui.QDoubleValidator(
+          0.0, xy_noise_max, 1, self)
+        self.xy_noise_field.setValidator(xy_noise_validator)
+        self.xy_noise_field.setMaxLength(len(str(xy_noise_max)))
         # XY noise slider
-        self.xy_noiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.xy_noiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.xy_noiseSlider.setMinimum(0)
-        self.xy_noiseSlider.setMaximum(10*xy_noiseMax)
-        self.xy_noiseSlider.setTickInterval(5)
-        self.xy_noiseSlider.setValue(10*self.xy_noise)
-        self.xy_noiseSlider.valueChanged.connect(self.noise_slider_change)
+        self.xy_noise_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.xy_noise_slider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.xy_noise_slider.setMinimum(0)
+        self.xy_noise_slider.setMaximum(10*xy_noise_max)
+        self.xy_noise_slider.setTickInterval(5)
+        self.xy_noise_slider.setValue(10*self.xy_noise)
+        self.xy_noise_slider.valueChanged.connect(self.noise_slider_change)
         # Theta noise text field
-        t_noiseLabel = QtGui.QLabel("Theta noise", self)
-        self.t_noiseField = QtGui.QLineEdit(str(self.t_noise))
-        self.t_noiseField.editingFinished.connect(self.noise_field_change)
-        t_noiseMax = 5.0
-        t_noiseValidator = QtGui.QDoubleValidator(
-          0.0, t_noiseMax, 1, self)
-        self.t_noiseField.setValidator(t_noiseValidator)
-        self.t_noiseField.setMaxLength(len(str(t_noiseMax)))
+        t_noise_label = QtGui.QLabel("Theta noise", self)
+        self.t_noise_field = QtGui.QLineEdit(str(self.t_noise))
+        self.t_noise_field.editingFinished.connect(self.noise_field_change)
+        t_noise_max = 5.0
+        t_noise_validator = QtGui.QDoubleValidator(
+          0.0, t_noise_max, 1, self)
+        self.t_noise_field.setValidator(t_noise_validator)
+        self.t_noise_field.setMaxLength(len(str(t_noise_max)))
         # Theta noise slider
-        self.t_noiseSlider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-        self.t_noiseSlider.setTickPosition(QtGui.QSlider.TicksBelow)
-        self.t_noiseSlider.setMinimum(0)
-        self.t_noiseSlider.setMaximum(10*t_noiseMax)
-        self.t_noiseSlider.setTickInterval(5)
-        self.t_noiseSlider.setValue(10*self.t_noise)
-        self.t_noiseSlider.valueChanged.connect(self.noise_slider_change)
+        self.t_noise_slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
+        self.t_noise_slider.setTickPosition(QtGui.QSlider.TicksBelow)
+        self.t_noise_slider.setMinimum(0)
+        self.t_noise_slider.setMaximum(10*t_noise_max)
+        self.t_noise_slider.setTickInterval(5)
+        self.t_noise_slider.setValue(10*self.t_noise)
+        self.t_noise_slider.valueChanged.connect(self.noise_slider_change)
         # Checkboxes for particle draw settings
-        self.particleDetailCheckbox = QtGui.QCheckBox(
+        self.particle_detail_checkbox = QtGui.QCheckBox(
           "Detailed particles", self)
-        self.particleColoringCheckbox = QtGui.QCheckBox(
+        self.particle_coloring_checkbox = QtGui.QCheckBox(
           "Variable particle colors", self)
-        # mclGroup layout
-        mclLayout = QtGui.QGridLayout()
-        mclGroup.setLayout(mclLayout)
-        mclWidgetsToAdd = [
-                       (num_particlesLabel, 3, 0),
-                  (self.num_particlesField, 3, 1),
-                            (xy_noiseLabel, 5, 0),
-                       (self.xy_noiseField, 5, 1),
-                      (self.xy_noiseSlider, 6, 0, 1, 2),
-                             (t_noiseLabel, 7, 0),
-                        (self.t_noiseField, 7, 1),
-                       (self.t_noiseSlider, 8, 0, 1, 2),
-              (self.particleDetailCheckbox, 9, 0, 1, 2),
-            (self.particleColoringCheckbox, 10, 0, 1, 2)
+        # mcl_group layout
+        mcl_layout = QtGui.QGridLayout()
+        mcl_group.setLayout(mcl_layout)
+        mcl_widgets_to_add = [
+                        (num_particles_label, 3, 0),
+                   (self.num_particles_field, 3, 1),
+                             (xy_noise_label, 5, 0),
+                        (self.xy_noise_field, 5, 1),
+                       (self.xy_noise_slider, 6, 0, 1, 2),
+                              (t_noise_label, 7, 0),
+                         (self.t_noise_field, 7, 1),
+                        (self.t_noise_slider, 8, 0, 1, 2),
+              (self.particle_detail_checkbox, 9, 0, 1, 2),
+            (self.particle_coloring_checkbox, 10, 0, 1, 2)
         ]
-        for args in mclWidgetsToAdd: mclLayout.addWidget(*args)
-        mclLayout.setColumnStretch(0, 1)
-        mclLayout.setRowStretch(20, 1)
+        for args in mcl_widgets_to_add: mcl_layout.addWidget(*args)
+        mcl_layout.setColumnStretch(0, 1)
+        mcl_layout.setRowStretch(20, 1)
         # Initial checkboxes settings
-        self.particleDetailCheckbox.setChecked(True)
-        self.particleColoringCheckbox.setChecked(True)
+        self.particle_detail_checkbox.setChecked(True)
+        self.particle_coloring_checkbox.setChecked(True)
 
         # Putting everything together
-        rightTabs.addTab(displayGroup, "Draw")
-        rightTabs.addTab(offsetGroup, "Offset")
-        rightTabs.addTab(mclGroup, "MCL")
-        self.rightDock = QtGui.QDockWidget("", self)
-        self.rightDock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea)
-        self.rightDock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
-        self.rightDock.setTitleBarWidget(QtGui.QWidget(self))
-        self.rightDock.setWidget(rightTabs)
-        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.rightDock)
+        right_tabs.addTab(display_group, "Draw")
+        right_tabs.addTab(offset_group, "Offset")
+        right_tabs.addTab(mcl_group, "MCL")
+        self.right_dock = QtGui.QDockWidget("", self)
+        self.right_dock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea)
+        self.right_dock.setFeatures(QtGui.QDockWidget.NoDockWidgetFeatures)
+        self.right_dock.setTitleBarWidget(QtGui.QWidget(self))
+        self.right_dock.setWidget(right_tabs)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.right_dock)
 
     def keyPressEvent(self, event):
         """Reimplements PySide's keyPressEvent to allow arrow key
@@ -927,8 +927,8 @@ class RobotGUI(QtGui.QMainWindow):
         if self.make_mcl == 2 and self.image_box == self.childAt(event.pos()):
             # Reported click location is relative to the entire window,
             # so we have to adjust using the sizes of the other docks
-            x_offset = self.leftDock.width() + 6
-            y_offset = (max(self.leftDock.height(), self.rightDock.height()) -
+            x_offset = self.left_dock.width() + 6
+            y_offset = (max(self.left_dock.height(), self.right_dock.height()) -
               self.height)/2
             relative_click_pos = (event.x() - x_offset, event.y() - y_offset)
             closest_distance = self.particle_radius + 1
@@ -1025,30 +1025,30 @@ class RobotGUI(QtGui.QMainWindow):
                 # if light_difference > 0:
                 #     p.prob *= 1.0/light_difference
             Robot.recent_move = False
-            oldSumProb = math.fsum([p.prob for p in self.particles])
-            if oldSumProb <= 0.01:
+            old_sum_prob = math.fsum([p.prob for p in self.particles])
+            if old_sum_prob <= 0.01:
                 # If all the points are really unlikely, just start over
                 self.particles = []
             else: # TODO
                 # Resampling creates an entirely new list of particles
                 # based on the probabilities from the old generation
-                newGen = []
+                new_gen = []
                 probs = [p.prob for p in self.particles]
-                cumulativeProb = [math.fsum(probs[i::-1]) for i in xrange(
+                cumulative_prob = [math.fsum(probs[i::-1]) for i in xrange(
                   self.num_particles)]
                 counter = 0
                 for i in xrange(self.num_particles):
                     # Step through probability "blocks" of particle list
-                    newGen.append(self.particles[counter])
-                    while (i * oldSumProb / self.num_particles >
-                            cumulativeProb[counter]):
+                    new_gen.append(self.particles[counter])
+                    while (i * old_sum_prob / self.num_particles >
+                            cumulative_prob[counter]):
                         counter += 1
-                newSumProb = math.fsum([p.prob for p in newGen])
-                self.particles = newGen
+                new_sum_prob = math.fsum([p.prob for p in new_gen])
+                self.particles = new_gen
                 for p in self.particles:
                     # Resampled particles' probabilities normalized
                     p.finish_resample(
-                      self.xy_noise, self.t_noise, newSumProb)
+                      self.xy_noise, self.t_noise, new_sum_prob)
         
     def particle_info_update(self):
         """Updates particle info widget box"""
@@ -1109,13 +1109,13 @@ class RobotGUI(QtGui.QMainWindow):
         painter = QtGui.QPainter()
         painter.begin(image)
         # Drawing axes
-        if self.axesCheckbox.isChecked():
+        if self.axes_checkbox.isChecked():
             painter.setPen(QtGui.QColor.fromHsv(240, 63, 63))
             painter.setBrush(QtGui.QColor.fromHsv(240, 63, 63))
             painter.drawLine(self.width/2, 0, self.width/2, self.height)
             painter.drawLine(0, self.height/2, self.width, self.height/2)
         # Drawing grid
-        if self.gridCheckbox.isChecked():
+        if self.grid_checkbox.isChecked():
             spacing = 20
             painter.setPen(QtGui.QColor.fromHsv(240,63,63))
             painter.setBrush(QtGui.QColor.fromHsv(240,63,63))
@@ -1125,11 +1125,11 @@ class RobotGUI(QtGui.QMainWindow):
                     painter.drawEllipse(x, y, 1, 1)
         # Drawing particles
         if self.make_mcl == 2:
-            self.particle_radius = (3 if self.particleDetailCheckbox.isChecked()
-              else 2)
+            self.particle_radius = (3 if
+              self.particle_detail_checkbox.isChecked() else 2)
             selected_radius = self.particle_radius + 2
             get_color = (self.calculate_color if
-                self.particleColoringCheckbox.isChecked() else
+                self.particle_coloring_checkbox.isChecked() else
                 lambda x, y, z: QtGui.QColor("darkGray"))
             for p in self.particles:
                 color = get_color(p, 255, 180)
@@ -1137,12 +1137,12 @@ class RobotGUI(QtGui.QMainWindow):
                 painter.setBrush(color)
                 painter.drawEllipse(QtCore.QPoint(p.x['draw'], p.y['draw']), 
                   self.particle_radius, self.particle_radius)
-            if self.particleDetailCheckbox.isChecked():
+            if self.particle_detail_checkbox.isChecked():
                 # Draw particle sensors and particle heading
                 for p in self.particles:
                     painter.setPen("black")
-                    sensorDraw = p.get_sensor_draw_position()
-                    for s in sensorDraw:
+                    sensor_draw = p.get_sensor_draw_position()
+                    for s in sensor_draw:
                         painter.drawPoint(s.x, s.y)
                     painter.drawLine(self.calculate_pointer(
                       p.x['draw'], p.y['draw'], p.t['display'],
@@ -1158,8 +1158,8 @@ class RobotGUI(QtGui.QMainWindow):
                   selected_radius, selected_radius)
                 # Sensors
                 painter.setPen("white")
-                sensorDraw = Particle.selected.get_sensor_draw_position()
-                for s in sensorDraw:
+                sensor_draw = Particle.selected.get_sensor_draw_position()
+                for s in sensor_draw:
                     painter.drawPoint(s.x, s.y)
                 # Pointer
                 painter.drawLine(self.calculate_pointer(
@@ -1173,13 +1173,13 @@ class RobotGUI(QtGui.QMainWindow):
                 painter.drawLine(self.trail[p-1][0], self.trail[p-1][1],
                                  self.trail[p][0], self.trail[p][1])
         # Drawing robot marker
-        if self.robotMarkerCheckbox.isChecked():
-            markerRadius = 8
+        if self.robot_marker_checkbox.isChecked():
+            marker_radius = 8
             painter.setPen(QtGui.QColor("black"))
             painter.setBrush(QtGui.QColor("lightGray"))
             painter.drawEllipse(
               QtCore.QPoint(self.trail[-1][0], self.trail[-1][1]),
-              markerRadius, markerRadius)
+              marker_radius, marker_radius)
             # Sensors
             painter.setPen(QtGui.QColor(0,255,0))
             robot_sensor_draw = D.robot.get_sensor_draw_position()
@@ -1188,7 +1188,7 @@ class RobotGUI(QtGui.QMainWindow):
             # Pointer
             painter.drawLine(self.calculate_pointer(
               self.trail[-1][0], self.trail[-1][1],
-              float(self.t_value.text()), markerRadius + 3, 8))
+              float(self.t_value.text()), marker_radius + 3, 8))
         painter.end()
         return image
 
@@ -1196,23 +1196,23 @@ class RobotGUI(QtGui.QMainWindow):
         """Calculates a line with the given length and an angle of
         theta degrees, offset from (x, y) by distance
         """
-        xDistance = distance * math.sin(math.radians(theta + 90.0))
-        yDistance = distance * math.cos(math.radians(theta + 90.0))
-        xLength = xDistance + length*math.sin(math.radians(theta + 90.0))
-        yLength = yDistance + length*math.cos(math.radians(theta + 90.0))
-        return QtCore.QLineF(xDistance + x, yDistance + y,
-                             xLength + x, yLength + y)
+        x_distance = distance * math.sin(math.radians(theta + 90.0))
+        y_distance = distance * math.cos(math.radians(theta + 90.0))
+        x_length = x_distance + length*math.sin(math.radians(theta + 90.0))
+        y_length = y_distance + length*math.cos(math.radians(theta + 90.0))
+        return QtCore.QLineF(x_distance + x, y_distance + y,
+                             x_length + x, y_length + y)
 
     def calculate_color(self, p, saturation, value):
         """Determines the color of a particle"""
         # The color of one point is based on how many other points
         # are close to it, "close" here being defined very arbitrarily
         near = 10 # pixels
-        numClosePoints = len(filter(
+        num_close_points = len(filter(
           lambda q: near >= abs(q.x['display'] - p.x['display']) and
                     near >= abs(q.y['display'] - p.y['display']),
           self.particles))
-        hue = 300 * (1 - numClosePoints/(self.num_particles*0.75))
+        hue = 300 * (1 - num_close_points/(self.num_particles*0.75))
         if hue < 0.0: hue = 0
         if hue > 300.0: hue = 300
         return QtGui.QColor.fromHsv(hue, saturation, value)
@@ -1221,38 +1221,38 @@ class RobotGUI(QtGui.QMainWindow):
     # MCL parameter slots
     ###
     def noise_slider_change(self):
-        """Called by self.xy_noiseSlider and self.t_noiseSlider to
+        """Called by self.xy_noise_slider and self.t_noise_slider to
         change noise parameters and text fields
         """
         sender = self.sender()
-        if sender == self.xy_noiseSlider:
-            self.xy_noise = self.xy_noiseSlider.value() / 10.0
-            self.xy_noiseField.setText(str(self.xy_noise))
-        elif sender == self.t_noiseSlider:
-            self.t_noise = self.t_noiseSlider.value() / 10.0
-            self.t_noiseField.setText(str(self.t_noise))
+        if sender == self.xy_noise_slider:
+            self.xy_noise = self.xy_noise_slider.value() / 10.0
+            self.xy_noise_field.setText(str(self.xy_noise))
+        elif sender == self.t_noise_slider:
+            self.t_noise = self.t_noise_slider.value() / 10.0
+            self.t_noise_field.setText(str(self.t_noise))
 
     def noise_field_change(self):
-        """Called by self.xy_noiseField and self.t_noiseField to
+        """Called by self.xy_noise_field and self.t_noise_field to
         change noise parameters and sliders
         """
         sender = self.sender()
-        if sender == self.xy_noiseField:
-            self.xy_noise = float(self.xy_noiseField.text())
-            self.xy_noiseSlider.blockSignals(True)
-            self.xy_noiseSlider.setSliderPosition(10 * self.xy_noise)
-            self.xy_noiseSlider.blockSignals(False)
-        elif sender == self.t_noiseField:
-            self.t_noise = float(self.t_noiseField.text())
-            self.t_noiseSlider.blockSignals(True)
-            self.t_noiseSlider.setSliderPosition(10 * self.t_noise)
-            self.t_noiseSlider.blockSignals(False)
+        if sender == self.xy_noise_field:
+            self.xy_noise = float(self.xy_noise_field.text())
+            self.xy_noise_slider.blockSignals(True)
+            self.xy_noise_slider.setSliderPosition(10 * self.xy_noise)
+            self.xy_noise_slider.blockSignals(False)
+        elif sender == self.t_noise_field:
+            self.t_noise = float(self.t_noise_field.text())
+            self.t_noise_slider.blockSignals(True)
+            self.t_noise_slider.setSliderPosition(10 * self.t_noise)
+            self.t_noise_slider.blockSignals(False)
 
     def num_particles_set(self):
-        """Called by num_particlesField to change number of MCL
+        """Called by num_particles_field to change number of MCL
         particles
         """
-        self.num_particles = int(self.num_particlesField.text())
+        self.num_particles = int(self.num_particles_field.text())
 
     ###
     # Light sensor slot
@@ -1263,14 +1263,14 @@ class RobotGUI(QtGui.QMainWindow):
         """
         sender = self.sender()
         corresponding = {
-            self.backLeftLowerField: 0,
-            self.frontLeftLowerField: 1,
-            self.frontRightLowerField: 2,
-            self.backRightLowerField: 3,
-            self.backLeftUpperField: 4,
-            self.frontLeftUpperField: 5,
-            self.frontRightUpperField: 6,
-            self.backRightUpperField: 7
+            self.back_left_lower_field: 0,
+            self.front_left_lower_field: 1,
+            self.front_right_lower_field: 2,
+            self.back_right_lower_field: 3,
+            self.back_left_upper_field: 4,
+            self.front_left_upper_field: 5,
+            self.front_right_upper_field: 6,
+            self.back_right_upper_field: 7
         }
         self.thresholds[corresponding[sender]] = int(sender.text())
 
@@ -1297,17 +1297,17 @@ class RobotGUI(QtGui.QMainWindow):
     
     def open_image(self):
         """ Called by self.open_action to open load dialog"""
-        toLoad = QtGui.QImage()
+        to_load = QtGui.QImage()
         dialog = QtGui.QFileDialog(self)
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
         dialog.setViewMode(QtGui.QFileDialog.Detail)
         fname, _ = dialog.getOpenFileName(
           self, "Open image (features must be black and/or white)",
           "/home/robotics/Desktop/", "*.png")
-        if toLoad.load(fname):
-            self.width = toLoad.width()
-            self.height = toLoad.height()
-            self.image_map = toLoad
+        if to_load.load(fname):
+            self.width = to_load.width()
+            self.height = to_load.height()
+            self.image_map = to_load
             self.setWindowTitle('RobotBox - ' + fname)
             self.erase_trail()
             self.erase_mcl()
@@ -1331,15 +1331,15 @@ class RobotGUI(QtGui.QMainWindow):
     def set_trail(self):
         """Called by buttons that change trail display settings"""
         sender = self.sender()
-        if sender == self.showTrailButton:
-            self.eraseTrailButton.setEnabled(True)
+        if sender == self.show_trail_button:
+            self.erase_trail_button.setEnabled(True)
             self.make_trail = 2
-        elif sender == self.hideTrailButton:
-            self.eraseTrailButton.setEnabled(True)
+        elif sender == self.hide_trail_button:
+            self.erase_trail_button.setEnabled(True)
             self.make_trail = 1
-        elif sender == self.noTrailButton:
+        elif sender == self.no_trail_button:
             self.erase_trail()
-            self.eraseTrailButton.setEnabled(False)
+            self.erase_trail_button.setEnabled(False)
             self.make_trail = 0
     
     def erase_trail(self): self.trail = []
@@ -1347,15 +1347,15 @@ class RobotGUI(QtGui.QMainWindow):
     def set_mcl(self):
         """Called by buttons that change MCL display settings"""
         sender = self.sender()
-        if sender == self.showMCLButton:
-            self.eraseMCLButton.setEnabled(True)
+        if sender == self.show_mcl_button:
+            self.erase_mcl_button.setEnabled(True)
             self.make_mcl = 2
-        elif sender == self.hideMCLButton:
-            self.eraseMCLButton.setEnabled(True)
+        elif sender == self.hide_mcl_button:
+            self.erase_mcl_button.setEnabled(True)
             self.make_mcl = 1
-        elif sender == self.noMCLButton:
+        elif sender == self.no_mcl_button:
             self.erase_mcl()
-            self.eraseMCLButton.setEnabled(False)
+            self.erase_mcl_button.setEnabled(False)
             self.make_mcl = 0
 
     def erase_mcl(self): self.particles = []; Particle.selected = None
